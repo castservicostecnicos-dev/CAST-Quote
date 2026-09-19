@@ -34,6 +34,9 @@ export async function getDatabase(): Promise<Database> {
   }
 
   initSchema(dbInstance);
+  try {
+    dbInstance.run("UPDATE work_orders SET technician_id = '' WHERE technician_id IS NULL;");
+  } catch {}
   saveDatabase();
   return dbInstance;
 }
@@ -180,7 +183,7 @@ function initSchema(db: Database) {
       order_number INTEGER NOT NULL,
       quote_id TEXT,
       client_id TEXT NOT NULL,
-      technician_id TEXT NOT NULL,
+      technician_id TEXT DEFAULT '',
       created_by TEXT NOT NULL,
       date TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Aberta',
@@ -302,8 +305,9 @@ function initSchema(db: Database) {
         [nowIso]
       );
     } else {
+      // Keep existing password intact when already configured
       db.run(
-        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'Desenvolvedor Master (Ale)'
+        `UPDATE users SET role = 'DEV', company_id = NULL, active = 1, name = 'Desenvolvedor Master (Ale)'
          WHERE email = 'ale11062@gmail.com'`
       );
     }
@@ -317,8 +321,9 @@ function initSchema(db: Database) {
         [nowIso]
       );
     } else {
+      // Keep existing password intact when already configured
       db.run(
-        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'Administrador Master DEV'
+        `UPDATE users SET role = 'DEV', company_id = NULL, active = 1, name = 'Administrador Master DEV'
          WHERE email = 'clientesiptv.2468@gmail.com'`
       );
     }

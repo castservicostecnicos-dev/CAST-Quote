@@ -58,26 +58,59 @@ export const DemoDashboard: React.FC<DemoDashboardProps> = ({
   const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [orders, setOrders] = useState<WorkOrder[]>([]);
-  const [loadingStats, setLoadingStats] = useState(true);
+  const demoCacheKey = `cast_demo_dash_cache_${activeCompany?.id || 'all'}`;
+
+  const getInitialDemoSnapshot = () => {
+    try {
+      const raw = sessionStorage.getItem(demoCacheKey) || localStorage.getItem(demoCacheKey);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+
+  const initialDemo = getInitialDemoSnapshot();
+  const [stats, setStats] = useState<DashboardStats | null>(initialDemo?.stats || null);
+  const [quotes, setQuotes] = useState<Quote[]>(initialDemo?.quotes || []);
+  const [orders, setOrders] = useState<WorkOrder[]>(initialDemo?.orders || []);
+  const [loadingStats, setLoadingStats] = useState(!initialDemo);
 
   useEffect(() => {
+    const snap = getInitialDemoSnapshot();
+    if (snap) {
+      setStats(snap.stats);
+      setQuotes(snap.quotes || []);
+      setOrders(snap.orders || []);
+      setLoadingStats(false);
+    }
     loadDemoData();
   }, [activeCompany?.id]);
 
   const loadDemoData = async () => {
-    setLoadingStats(true);
+    if (!stats) setLoadingStats(true);
     try {
-      const [statsData, quotesData, ordersData] = await Promise.all([
-        api.getDashboardStats(activeCompany?.id, 'DEV'),
-        api.getQuotes({ companyId: activeCompany?.id, userRole: 'DEV' }),
-        api.getWorkOrders({ companyId: activeCompany?.id, userRole: 'DEV' })
-      ]);
+      const statsData = await api.getDashboardStats(activeCompany?.id, 'DEV');
       setStats(statsData);
-      setQuotes(quotesData);
-      setOrders(ordersData);
+
+      let qList = statsData.recentQuotes || [];
+      let oList = statsData.recentOrders || [];
+
+      if (qList.length === 0 || oList.length === 0) {
+        const [quotesData, ordersData] = await Promise.all([
+          api.getQuotes({ companyId: activeCompany?.id, userRole: 'DEV' }),
+          api.getWorkOrders({ companyId: activeCompany?.id, userRole: 'DEV' })
+        ]);
+        qList = quotesData;
+        oList = ordersData;
+      }
+
+      setQuotes(qList);
+      setOrders(oList);
+
+      try {
+        const snapshot = { stats: statsData, quotes: qList, orders: oList };
+        sessionStorage.setItem(demoCacheKey, JSON.stringify(snapshot));
+        localStorage.setItem(demoCacheKey, JSON.stringify(snapshot));
+      } catch {}
     } catch (err) {
       console.error('Erro ao carregar dados de demonstração:', err);
     } finally {
@@ -181,7 +214,8 @@ export const DemoDashboard: React.FC<DemoDashboardProps> = ({
   const handleSimulateProfile = async (profile: DemoProfile) => {
     try {
       setSwitchingEmail(profile.email);
-      localStorage.setItem('cast_demo_mode', 'true');
+      sessionStorage.setItem('cast_dev_simulating', 'true');
+      localStorage.removeItem('cast_demo_mode');
       await login(profile.email, profile.pass);
     } catch (err: any) {
       alert('Erro ao autenticar no perfil selecionado: ' + err.message);

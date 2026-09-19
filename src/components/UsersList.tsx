@@ -7,8 +7,17 @@ import { User, UserRole, Company } from '../types';
 export const UsersList: React.FC = () => {
   const { user: currentUser, activeCompany, companies, isDev, isAdmin, isManager } = useAuth();
   const canManage = isDev || isAdmin || isManager;
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>(() => {
+    const cached = api.getCachedUsers();
+    if (activeCompany?.id) {
+      return cached.filter(u => u.company_id === activeCompany.id && u.role !== 'DEV');
+    }
+    return cached.filter(u => u.role !== 'DEV');
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = api.getCachedUsers();
+    return cached.length === 0;
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
@@ -27,7 +36,9 @@ export const UsersList: React.FC = () => {
   }, [activeCompany?.id, currentUser?.role]);
 
   const loadUsers = async () => {
-    setLoading(true);
+    if (users.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await api.getUsers(activeCompany?.id, currentUser?.role);
       setUsers(data.filter((u: User) => u.role !== 'DEV'));
@@ -65,26 +76,38 @@ export const UsersList: React.FC = () => {
     if (!name || !email) return;
     setSaving(true);
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanName = name.trim();
+      const cleanPassword = password ? password.trim() : '';
+
       const payload: any = {
-        name,
-        email,
+        name: cleanName,
+        email: cleanEmail,
         role,
-        company_id: isDev ? targetCompanyId : activeCompany?.id,
+        company_id: isDev ? (role === 'DEV' ? null : targetCompanyId) : activeCompany?.id,
         active: active ? 1 : 0
       };
-      if (password) {
-        payload.password = password;
+      if (cleanPassword) {
+        payload.password = cleanPassword;
       }
       if (userToEdit) {
         await api.updateUser(userToEdit.id, payload);
+        if (cleanPassword) {
+          try {
+            await api.resetUserPassword(userToEdit.id, cleanPassword, cleanEmail);
+          } catch (resetErr) {
+            console.warn('Erro ao sincronizar senha com reset endpoint:', resetErr);
+          }
+        }
       } else {
-        if (!password) {
+        if (!cleanPassword) {
           alert('Por favor, defina uma senha para o novo usuário.');
           setSaving(false);
           return;
         }
         await api.createUser(payload);
       }
+      setPassword('');
       setModalOpen(false);
       loadUsers();
     } catch (err: any) {

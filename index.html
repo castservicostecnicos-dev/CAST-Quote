@@ -17,13 +17,15 @@
             } else if (arg instanceof Error) {
               str = (arg.message || '') + ' ' + (arg.stack || '');
             } else {
-              try { str = String(arg); } catch(e) {}
+              try { str = JSON.stringify(arg) || String(arg); } catch(e) { str = String(arg); }
             }
+            var lower = str.toLowerCase();
             if (
-              str.indexOf('[vite]') !== -1 ||
-              str.indexOf('vite:') !== -1 ||
-              str.indexOf('failed to connect to websocket') !== -1 ||
-              str.indexOf('WebSocket closed without opened') !== -1
+              lower.indexOf('[vite]') !== -1 ||
+              lower.indexOf('vite:') !== -1 ||
+              lower.indexOf('failed to connect to websocket') !== -1 ||
+              lower.indexOf('websocket closed without opened') !== -1 ||
+              (lower.indexOf('websocket') !== -1 && lower.indexOf('vite') !== -1)
             ) {
               return true;
             }
@@ -44,17 +46,25 @@
         });
 
         window.addEventListener('error', function(event) {
-          if (event && (isViteNotice(event.message) || isViteNotice(event.error))) {
+          if (
+            event && (
+              isViteNotice(event.message, event.filename, event.error) ||
+              (event.target && event.target.tagName === 'SCRIPT' && (event.target.src || '').indexOf('vite') !== -1) ||
+              (typeof WebSocket !== 'undefined' && event.target instanceof WebSocket)
+            )
+          ) {
             event.stopImmediatePropagation();
             event.preventDefault();
+            return true;
           }
         }, true);
 
         window.addEventListener('unhandledrejection', function(event) {
           var reason = event && event.reason;
-          if (reason && (isViteNotice(reason) || isViteNotice(reason.message))) {
+          if (reason && (isViteNotice(reason, reason.message, reason.stack))) {
             event.stopImmediatePropagation();
             event.preventDefault();
+            return true;
           }
         }, true);
       })();

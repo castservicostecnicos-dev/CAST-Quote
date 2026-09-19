@@ -199,6 +199,15 @@ export interface DashboardStats {
   };
   recentQuotes: Quote[];
   recentOrders: WorkOrder[];
+  total_quotes?: number;
+  total_quotes_value?: number;
+  total_orders?: number;
+  total_orders_value?: number;
+  total_clients?: number;
+  total_technicians?: number;
+  total_companies?: number;
+  quotes_by_status?: Record<string, number>;
+  orders_by_status?: Record<string, number>;
 }
 
 export interface ItemRow {

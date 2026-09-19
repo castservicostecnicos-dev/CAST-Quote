@@ -18,7 +18,8 @@ import {
   Cloud,
   Database,
   ShieldCheck,
-  PenTool
+  PenTool,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -46,39 +47,94 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenDriveSettings
 }) => {
   const { user, activeCompany, isDev, isSupervisor } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [recentQuotes, setRecentQuotes] = useState<Quote[]>([]);
-  const [recentOrders, setRecentOrders] = useState<WorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const cacheKey = `cast_dash_snapshot_${activeCompany?.id || 'all'}_${user?.role || 'all'}`;
+
+  // Instant synchronous cache retrieval for 0ms visual rendering
+  const getInitialSnapshot = () => {
+    try {
+      const raw = sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+
+  const initial = getInitialSnapshot();
+  const [stats, setStats] = useState<DashboardStats | null>(initial?.stats || null);
+  const [recentQuotes, setRecentQuotes] = useState<Quote[]>(initial?.recentQuotes || []);
+  const [recentOrders, setRecentOrders] = useState<WorkOrder[]>(initial?.recentOrders || []);
+  const [loading, setLoading] = useState(!initial);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeDevSubView, setActiveDevSubView] = useState<'overview' | 'demo'>('overview');
   const [isTrainerOpen, setIsTrainerOpen] = useState(false);
 
   useEffect(() => {
+    // When company or role changes, check new cache immediately
+    const snap = getInitialSnapshot();
+    if (snap) {
+      setStats(snap.stats);
+      setRecentQuotes(snap.recentQuotes || []);
+      setRecentOrders(snap.recentOrders || []);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     loadData();
   }, [activeCompany?.id, user?.role]);
 
   const loadData = async () => {
-    setLoading(true);
+    // Only show full-screen blocking loader if we have zero cached data
+    if (!stats) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
     try {
-      const [statsData, quotesData, ordersData] = await Promise.all([
-        api.getDashboardStats(activeCompany?.id, user?.role),
-        api.getQuotes({ companyId: activeCompany?.id, userRole: user?.role }),
-        api.getWorkOrders({ companyId: activeCompany?.id, userRole: user?.role })
-      ]);
+      // 1. Single lightweight call for stats + recent 5 items (eliminates downloading entire collections)
+      const statsData = await api.getDashboardStats(activeCompany?.id, user?.role);
       setStats(statsData);
-      setRecentQuotes(quotesData.slice(0, 5));
-      setRecentOrders(ordersData.slice(0, 5));
+
+      let quotesList = statsData.recentQuotes || [];
+      let ordersList = statsData.recentOrders || [];
+
+      // Fallback only if recent arrays are empty but count indicates records exist
+      if (quotesList.length === 0 && (statsData.quotesCount > 0 || (statsData.total_quotes && statsData.total_quotes > 0))) {
+        const qData = await api.getQuotes({ companyId: activeCompany?.id, userRole: user?.role });
+        quotesList = qData.slice(0, 5);
+      }
+
+      if (ordersList.length === 0 && (statsData.ordersCount > 0 || (statsData.total_orders && statsData.total_orders > 0))) {
+        const oData = await api.getWorkOrders({ companyId: activeCompany?.id, userRole: user?.role });
+        ordersList = oData.slice(0, 5);
+      }
+
+      setRecentQuotes(quotesList);
+      setRecentOrders(ordersList);
+
+      // Persist snapshot to cache for instant rendering next time
+      try {
+        const snapshot = {
+          stats: statsData,
+          recentQuotes: quotesList,
+          recentOrders: ordersList,
+          timestamp: Date.now()
+        };
+        sessionStorage.setItem(cacheKey, JSON.stringify(snapshot));
+        localStorage.setItem(cacheKey, JSON.stringify(snapshot));
+      } catch {}
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   const formatBrl = (val: number) =>
     (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="flex items-center justify-center p-16">
         <div className="text-center text-slate-500">
@@ -161,13 +217,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Welcome Banner */}
           <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
-                isDev && !activeCompany
-                  ? 'bg-purple-500/20 text-purple-300 border-purple-400/30'
-                  : 'bg-blue-500/20 text-blue-300 border-blue-400/30'
-              }`}>
-                {isDev && !activeCompany ? '🌐 Modo Desenvolvedor Independente • Visão Global' : (activeCompany?.name || 'Sistema CAST Quote')}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                  isDev && !activeCompany
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-400/30'
+                    : 'bg-blue-500/20 text-blue-300 border-blue-400/30'
+                }`}>
+                  {isDev && !activeCompany ? '🌐 Modo Desenvolvedor Independente • Visão Global' : (activeCompany?.name || 'Sistema CAST Quote')}
+                </span>
+                {isRefreshing && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full border border-blue-500/30">
+                    <RefreshCw className="w-3 h-3 animate-spin text-blue-300" />
+                    <span>Atualizando...</span>
+                  </span>
+                )}
+              </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">
                 Olá, {user?.name?.split(' ')[0]}! 👋
               </h1>
@@ -179,7 +243,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-2.5">
-              {onOpenPresentation && (
+              {isDev && onOpenPresentation && (
                 <button
                   type="button"
                   id="btn-dash-commercial-presentation"
@@ -323,11 +387,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900">{stats?.total_quotes || 0}</span>
+            <span className="text-2xl font-extrabold text-slate-900">{stats?.total_quotes ?? stats?.quotesCount ?? 0}</span>
           </div>
           <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
             <span>Valor Total:</span>
-            <span className="font-bold text-slate-800">{formatBrl(stats?.total_quotes_value || 0)}</span>
+            <span className="font-bold text-slate-800">{formatBrl(stats?.total_quotes_value ?? stats?.quotesTotal ?? 0)}</span>
           </div>
         </div>
 
@@ -342,11 +406,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-slate-900">{stats?.total_orders || 0}</span>
+            <span className="text-2xl font-extrabold text-slate-900">{stats?.total_orders ?? stats?.ordersCount ?? 0}</span>
           </div>
           <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
             <span>Valor Total OS:</span>
-            <span className="font-bold text-slate-800">{formatBrl(stats?.total_orders_value || 0)}</span>
+            <span className="font-bold text-slate-800">{formatBrl(stats?.total_orders_value ?? stats?.ordersTotal ?? 0)}</span>
           </div>
         </div>
 
@@ -362,12 +426,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <div className="mt-3 flex items-baseline gap-3">
             <div>
-              <span className="text-2xl font-extrabold text-slate-900">{stats?.total_clients || 0}</span>
+              <span className="text-2xl font-extrabold text-slate-900">{stats?.total_clients ?? stats?.clientsCount ?? 0}</span>
               <span className="text-[11px] text-slate-500 ml-1">Clientes</span>
             </div>
             <span className="text-slate-300">•</span>
             <div>
-              <span className="text-lg font-bold text-slate-700">{stats?.total_technicians || 0}</span>
+              <span className="text-lg font-bold text-slate-700">{stats?.total_technicians ?? stats?.techniciansCount ?? 0}</span>
               <span className="text-[11px] text-slate-500 ml-1">Técnicos</span>
             </div>
           </div>
@@ -386,7 +450,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <div className="mt-3">
             <span className="text-2xl font-extrabold text-slate-900">
-              {isDev ? stats?.total_companies || 1 : stats?.quotes_by_status?.['Aprovado'] || 0}
+              {isDev
+                ? (stats?.total_companies ?? stats?.companiesCount ?? 1)
+                : (stats?.quotes_by_status?.['Aprovado'] ?? stats?.statusDistribution?.quotes?.['Aprovado'] ?? 0)}
             </span>
           </div>
           <div className="mt-1 text-xs text-slate-500">

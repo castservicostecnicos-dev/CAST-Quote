@@ -62,7 +62,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return localStorage.getItem('cast_token');
   });
 
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<Company[]>(() => api.getCachedCompanies());
+
+  // Purge any stale demo flags for real client accounts on boot
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isSimulating = sessionStorage.getItem('cast_dev_simulating') === 'true';
+      if (!isSimulating || (user && user.role !== 'DEV')) {
+        localStorage.removeItem('cast_demo_mode');
+      }
+    }
+  }, [user?.id, user?.role]);
 
   // Apply brand theme to CSS variables on boot and whenever activeCompany changes
   useEffect(() => {
@@ -133,6 +143,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.id, user?.company_id]);
 
   const login = async (email: string, pass: string) => {
+    const isSimulating = typeof window !== 'undefined' && sessionStorage.getItem('cast_dev_simulating') === 'true';
+    if (!isSimulating) {
+      localStorage.removeItem('cast_demo_mode');
+      sessionStorage.removeItem('cast_dev_simulating');
+    }
+
     const data = await api.login(email, pass);
     setUser(data.user);
     setToken(data.token);
@@ -162,6 +178,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('cast_user');
     localStorage.removeItem('cast_company');
     localStorage.removeItem('cast_token');
+    localStorage.removeItem('cast_demo_mode');
+    sessionStorage.removeItem('cast_dev_simulating');
   };
 
   const switchCompany = async (companyId: string | null) => {

@@ -138,7 +138,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
     setTechnicianId(technicians[0]?.id || '');
     setDate(new Date().toISOString().split('T')[0]);
     setStatus('Aberta');
-    setServiceDescription('');
+    setServiceDescription('Execução de serviços técnicos especializados em campo');
     setAddress('');
     setNotes('Execução realizada de acordo com as normas técnicas de segurança.');
     setDiscount(0);
@@ -214,14 +214,23 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
 
     setLoading(true);
     try {
+      const targetCompanyId = activeCompany?.id ||
+        (user as any)?.company_id ||
+        clients.find(c => c.id === clientId)?.company_id ||
+        'comp-cast';
+
+      const effectiveDesc = (serviceDescription && serviceDescription.trim()) ||
+        (items && items[0]?.description && items[0].description.trim()) ||
+        'Execução de serviços técnicos especializados em campo';
+
       const payload = {
-        company_id: activeCompany?.id,
+        company_id: targetCompanyId,
         client_id: clientId,
-        technician_id: technicianId || null,
-        created_by: user?.id,
+        technician_id: technicianId || '',
+        created_by: user?.id || 'Sistema',
         date,
         status,
-        service_description: serviceDescription,
+        service_description: effectiveDesc,
         address,
         subtotal,
         discount: Number(discount) || 0,

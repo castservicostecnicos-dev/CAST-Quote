@@ -44,28 +44,76 @@ export const CompanyLogoUploader: React.FC<CompanyLogoUploaderProps> = ({
       return;
     }
 
-    // Limit to 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      setError('A imagem deve ter no máximo 10MB.');
+    // Limit to 15MB
+    if (file.size > 15 * 1024 * 1024) {
+      setError('A imagem deve ter no máximo 15MB.');
       return;
     }
 
     setError(null);
     setSelectedFileName(file.name);
-    setSelectedFileSize(
-      file.size > 1024 * 1024
-        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
-        : `${Math.round(file.size / 1024)} KB`
-    );
 
-    // Create local object preview
+    // Read and optimize image for safe storage and instant saving
     const reader = new FileReader();
-    reader.onload = () => {
-      const previewDataUrl = reader.result as string;
-      onChange(previewDataUrl, '');
-      if (onFileSelect) {
-        onFileSelect(file);
+    reader.onload = (e) => {
+      const rawDataUrl = e.target?.result as string;
+      if (!rawDataUrl) return;
+
+      // If SVG, use directly as it's vector
+      if (file.type === 'image/svg+xml') {
+        setSelectedFileSize(`${Math.round(file.size / 1024)} KB`);
+        onChange(rawDataUrl, '');
+        if (onFileSelect) onFileSelect(file);
+        return;
       }
+
+      // Automatically scale & compress raster images (PNG, JPEG, WebP) to max 512px
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 512;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          onChange(rawDataUrl, '');
+          if (onFileSelect) onFileSelect(file);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        // Use PNG if PNG or SVG, else JPEG for maximum compression
+        const outputMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const compressedDataUrl = canvas.toDataURL(outputMime, 0.85);
+
+        const approxBytes = Math.round((compressedDataUrl.length * 3) / 4);
+        setSelectedFileSize(
+          approxBytes > 1024 * 1024
+            ? `${(approxBytes / (1024 * 1024)).toFixed(2)} MB`
+            : `${Math.round(approxBytes / 1024)} KB`
+        );
+
+        onChange(compressedDataUrl, '');
+        if (onFileSelect) onFileSelect(file);
+      };
+      img.onerror = () => {
+        onChange(rawDataUrl, '');
+        if (onFileSelect) onFileSelect(file);
+      };
+      img.src = rawDataUrl;
     };
     reader.onerror = () => {
       setError('Erro ao ler a imagem do dispositivo.');

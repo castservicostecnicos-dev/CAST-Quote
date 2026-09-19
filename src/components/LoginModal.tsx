@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Lock, Mail, ArrowRight, AlertCircle, CheckCircle2, Database, ShieldCheck } from 'lucide-react';
+import { FileText, Lock, Mail, ArrowRight, AlertCircle, CheckCircle2, Database, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 export const LoginModal: React.FC = () => {
   const { login } = useAuth();
@@ -8,13 +8,18 @@ export const LoginModal: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showDevAccounts, setShowDevAccounts] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      await login(email, password);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('cast_demo_mode');
+        sessionStorage.removeItem('cast_dev_simulating');
+      }
+      await login(email.trim(), password.trim());
     } catch (err: any) {
       setError(err.message || 'Falha ao autenticar.');
     } finally {
@@ -104,54 +109,62 @@ export const LoginModal: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Access Credentials */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-              Acesso Rápido para Demonstração:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('ale11062@gmail.com', 'cast.2468')}
-                className="text-left p-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 transition text-[11px]"
-              >
-                <div className="font-bold text-purple-900 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-purple-700" />
-                  <span>DEV Master</span>
-                </div>
-                <div className="text-purple-600 truncate text-[10px]">ale11062@...</div>
-              </button>
+          {/* Collapsible Test / DEV Credentials */}
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowDevAccounts(!showDevAccounts)}
+              className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-400 hover:text-slate-600 transition py-1"
+            >
+              <span>Contas de Teste (Ambiente DEV)</span>
+              {showDevAccounts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('adm@castengenharia.com.br', 'adm123')}
-                className="text-left p-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 transition text-[11px]"
-              >
-                <div className="font-bold text-blue-900 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-blue-700" />
-                  <span>ADM Empresa</span>
-                </div>
-                <div className="text-blue-600 truncate text-[10px]">adm@cast...</div>
-              </button>
+            {showDevAccounts && (
+              <div className="grid grid-cols-2 gap-2 mt-2 animate-in fade-in duration-150">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('ale11062@gmail.com', 'cast.2468')}
+                  className="text-left p-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 transition text-[11px]"
+                >
+                  <div className="font-bold text-purple-900 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-purple-700" />
+                    <span>DEV Master</span>
+                  </div>
+                  <div className="text-purple-600 truncate text-[10px]">ale11062@...</div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('gerente@castengenharia.com.br', 'gerente123')}
-                className="text-left p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition text-[11px]"
-              >
-                <div className="font-bold text-slate-800">Gerente</div>
-                <div className="text-slate-500 truncate text-[10px]">gerente@cast...</div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('adm@castengenharia.com.br', 'adm123')}
+                  className="text-left p-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 transition text-[11px]"
+                >
+                  <div className="font-bold text-blue-900 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-blue-700" />
+                    <span>ADM Empresa</span>
+                  </div>
+                  <div className="text-blue-600 truncate text-[10px]">adm@cast...</div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('tecnico@castengenharia.com.br', 'tec123')}
-                className="text-left p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition text-[11px]"
-              >
-                <div className="font-bold text-emerald-900">Técnico</div>
-                <div className="text-emerald-600 truncate text-[10px]">tecnico@cast...</div>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('gerente@castengenharia.com.br', 'gerente123')}
+                  className="text-left p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition text-[11px]"
+                >
+                  <div className="font-bold text-slate-800">Gerente</div>
+                  <div className="text-slate-500 truncate text-[10px]">gerente@cast...</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('tecnico@castengenharia.com.br', 'tec123')}
+                  className="text-left p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition text-[11px]"
+                >
+                  <div className="font-bold text-emerald-900">Técnico</div>
+                  <div className="text-emerald-600 truncate text-[10px]">tecnico@cast...</div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

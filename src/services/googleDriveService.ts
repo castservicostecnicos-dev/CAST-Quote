@@ -97,6 +97,48 @@ export const googleSignIn = async (
 
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
+    const isUserCancellation =
+      error?.code === 'auth/popup-closed-by-user' ||
+      error?.code === 'auth/cancelled-popup-request' ||
+      error?.message?.includes('popup-closed-by-user') ||
+      error?.message?.includes('cancelled-popup-request');
+
+    const isPopupBlocked =
+      error?.code === 'auth/popup-blocked' ||
+      error?.message?.includes('popup-blocked');
+
+    if (isUserCancellation) {
+      console.info('[Google Drive] Janela de autenticação fechada pelo usuário.');
+      const friendlyError: any = new Error(
+        'A janela de autenticação do Google foi fechada antes de concluir o login. Clique para tentar novamente.'
+      );
+      friendlyError.code = 'auth/popup-closed-by-user';
+      throw friendlyError;
+    }
+
+    if (isPopupBlocked) {
+      console.warn('[Google Drive] Janela pop-up bloqueada pelo navegador.');
+      const friendlyError: any = new Error(
+        'A janela pop-up foi bloqueada pelo navegador. Permita pop-ups para esta página ou abra o aplicativo em uma nova aba.'
+      );
+      friendlyError.code = 'auth/popup-blocked';
+      throw friendlyError;
+    }
+
+    const isAccessDenied =
+      error?.code === 'auth/access-denied' ||
+      error?.message?.includes('access_denied') ||
+      error?.message?.includes('403');
+
+    if (isAccessDenied) {
+      console.warn('[Google Drive] Acesso bloqueado pelo Google (App em fase de teste / 403).');
+      const friendlyError: any = new Error(
+        'Acesso bloqueado pelo Google (Erro 403): O app está em fase de testes no Google Cloud. Para autorizar esta conta, adicione-a como "Usuário de teste" no Console Google Cloud ou conecte com o e-mail desenvolvedor do projeto.'
+      );
+      friendlyError.code = 'auth/access-denied';
+      throw friendlyError;
+    }
+
     console.error('Erro no Sign In do Google Drive:', error);
     throw error;
   } finally {

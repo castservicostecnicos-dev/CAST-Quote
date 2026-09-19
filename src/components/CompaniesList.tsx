@@ -32,9 +32,9 @@ import { BRAND_COLOR_PRESETS } from '../utils/brandTheme';
 
 export const CompaniesList: React.FC = () => {
   const { user: currentUser, isDev, refreshCompanies, switchCompany, activeCompany, updateCompanyBranding } = useAuth();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState<Company[]>(() => api.getCachedCompanies());
+  const [allUsers, setAllUsers] = useState<User[]>(() => api.getCachedUsers());
+  const [loading, setLoading] = useState(() => api.getCachedCompanies().length === 0);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Selected company for detailed view
@@ -99,7 +99,9 @@ export const CompaniesList: React.FC = () => {
   }, [currentUser?.role]);
 
   const loadData = async () => {
-    setLoading(true);
+    if (companies.length === 0) {
+      setLoading(true);
+    }
     try {
       const [comps, users] = await Promise.all([
         api.getCompanies(currentUser?.role),
@@ -124,7 +126,12 @@ export const CompaniesList: React.FC = () => {
   };
 
   const loadCompanyUsers = async (companyId: string) => {
-    setLoadingUsers(true);
+    const instantUsers = allUsers.filter((u) => u.company_id === companyId && u.role !== 'DEV');
+    if (instantUsers.length > 0) {
+      setCompanyUsers(instantUsers);
+    } else {
+      setLoadingUsers(true);
+    }
     try {
       const users = await api.getUsers(companyId);
       setCompanyUsers(users.filter((u) => u.role !== 'DEV'));
@@ -194,22 +201,23 @@ export const CompaniesList: React.FC = () => {
         active: active ? 1 : 0
       };
       if (companyToEdit) {
-        await api.updateCompany(companyToEdit.id, payload);
+        const updated = await api.updateCompany(companyToEdit.id, payload);
         if (activeCompany?.id === companyToEdit.id) {
           await updateCompanyBranding(primaryColor, logoUrl);
         }
+        setCompanies(prev => prev.map(c => c.id === companyToEdit.id ? { ...c, ...payload, ...updated } : c));
         if (!active) {
           showToast(`Empresa "${name}" e todos os seus usuários foram desativados.`);
         } else {
           showToast(`Empresa "${name}" atualizada com sucesso!`);
         }
         setCompanyModalOpen(false);
-        await refreshCompanies();
-        await loadData();
         if (selectedCompany?.id === companyToEdit.id) {
-          setSelectedCompany(prev => prev ? { ...prev, ...payload } : null);
-          await loadCompanyUsers(companyToEdit.id);
+          setSelectedCompany(prev => prev ? { ...prev, ...payload, ...updated } : null);
+          loadCompanyUsers(companyToEdit.id);
         }
+        refreshCompanies();
+        loadData();
       } else {
         if (createManagerUser && managerEmail.trim()) {
           payload.manager_name = managerName.trim() || `Gerente ${name}`;
@@ -217,20 +225,23 @@ export const CompaniesList: React.FC = () => {
           payload.manager_password = managerPassword.trim() || 'Cast123';
         }
         const createdComp: any = await api.createCompany(payload);
+        if (createdComp) {
+          setCompanies(prev => [createdComp, ...prev.filter(c => c.id !== createdComp.id)]);
+        }
         if (createManagerUser && managerEmail.trim()) {
           showToast(`Empresa "${name}" cadastrada com Gerente "${managerEmail.trim()}"!`);
         } else {
           showToast(`Empresa "${name}" cadastrada com sucesso!`);
         }
         setCompanyModalOpen(false);
-        await refreshCompanies();
-        await loadData();
         if (createdComp?.id) {
           handleSelectCompany(createdComp);
         }
+        refreshCompanies();
+        loadData();
       }
     } catch (err: any) {
-      alert('Erro ao salvar empresa: ' + err.message);
+      alert('Erro ao salvar empresa: ' + (err.message || 'Verifique sua conexão e tente novamente.'));
     } finally {
       setSavingCompany(false);
     }
@@ -348,8 +359,8 @@ export const CompaniesList: React.FC = () => {
     if (!userForPassword || !newPassword.trim()) return;
     setSavingPassword(true);
     try {
-      await api.resetUserPassword(userForPassword.id, newPassword.trim());
-      setPasswordSuccess(`Senha de ${userForPassword.name} alterada com sucesso para: "${newPassword}"`);
+      await api.resetUserPassword(userForPassword.id, newPassword.trim(), userForPassword.email);
+      setPasswordSuccess(`Senha de ${userForPassword.name} alterada com sucesso para: "${newPassword.trim()}"`);
       showToast(`Senha recuperada para o usuário ${userForPassword.name}!`);
       setTimeout(() => {
         setPasswordModalOpen(false);

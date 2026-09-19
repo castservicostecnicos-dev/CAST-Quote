@@ -33,8 +33,20 @@ async function startServer() {
         return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
       }
 
-      const user = queryOne(`SELECT * FROM users WHERE email = ?`, [email.trim().toLowerCase()]);
-      if (!user || user.password !== password) {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
+
+      const user = queryOne(`SELECT * FROM users WHERE email = ?`, [cleanEmail]);
+      if (!user) {
+        return res.status(401).json({ error: 'Credenciais inválidas. Verifique seu e-mail e senha.' });
+      }
+
+      const storedPassword = (user.password || '').trim();
+      const isMatch = (user.password === password) || 
+                      (storedPassword === cleanPassword) || 
+                      (user.password === cleanPassword);
+
+      if (!isMatch) {
         return res.status(401).json({ error: 'Credenciais inválidas. Verifique seu e-mail e senha.' });
       }
 
@@ -113,13 +125,24 @@ async function startServer() {
       if (manager_email && manager_email.trim().length > 0) {
         const mgrName = (manager_name && manager_name.trim()) ? manager_name.trim() : `Gerente ${name}`;
         const mgrPassword = (manager_password && manager_password.trim()) ? manager_password.trim() : 'Cast123';
-        const userId = `usr-${Date.now()}`;
-        runSql(
-          `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
-           VALUES (?, ?, ?, ?, ?, 'GERENTE', 1, ?)`,
-          [userId, id, mgrName, manager_email.trim().toLowerCase(), mgrPassword, now]
-        );
-        createdManager = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [userId]);
+        const cleanEmail = manager_email.trim().toLowerCase();
+        const existingUser = queryOne(`SELECT id FROM users WHERE LOWER(email) = ?`, [cleanEmail]);
+
+        if (existingUser) {
+          runSql(
+            `UPDATE users SET company_id = ?, name = ?, password = ?, role = 'GERENTE', active = 1 WHERE id = ?`,
+            [id, mgrName, mgrPassword, existingUser.id]
+          );
+          createdManager = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [existingUser.id]);
+        } else {
+          const userId = `usr-${Date.now()}`;
+          runSql(
+            `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
+             VALUES (?, ?, ?, ?, ?, 'GERENTE', 1, ?)`,
+            [userId, id, mgrName, cleanEmail, mgrPassword, now]
+          );
+          createdManager = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [userId]);
+        }
       }
 
       const created = queryOne(`SELECT * FROM companies WHERE id = ?`, [id]);
@@ -259,21 +282,21 @@ async function startServer() {
         return res.status(400).json({ error: 'Nome, e-mail, senha e perfil são obrigatórios.' });
       }
 
-      if (role === 'DEV') {
-        return res.status(400).json({ error: 'O perfil DEV é independente e não pode ser vinculado a nenhuma empresa.' });
-      }
+      const targetCompanyId = role === 'DEV' ? null : (company_id || null);
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
 
-      const existing = queryOne(`SELECT id FROM users WHERE email = ?`, [email.trim().toLowerCase()]);
+      const existing = queryOne(`SELECT id FROM users WHERE email = ?`, [cleanEmail]);
       if (existing) {
         return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
       }
 
-      const id = `usr-${Date.now()}`;
+      const id = req.body.id || `usr-${Date.now()}`;
       const now = new Date().toISOString();
       runSql(
         `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
-        [id, company_id, name, email.trim().toLowerCase(), password, role, now]
+        [id, targetCompanyId, name, cleanEmail, cleanPassword, role, now]
       );
 
       const created = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [id]);
@@ -288,23 +311,44 @@ async function startServer() {
       const { id } = req.params;
       const { company_id, name, email, password, role, active } = req.body;
 
-      if (role === 'DEV') {
-        return res.status(400).json({ error: 'O perfil DEV é independente e não pode ser vinculado a nenhuma empresa.' });
+      const targetCompanyId = role === 'DEV' ? null : (company_id || null);
+      const cleanEmail = email ? email.trim().toLowerCase() : '';
+      const cleanPassword = password && password.trim().length > 0 ? password.trim() : null;
+
+      // Check if user exists by ID or by email
+      let user = queryOne(`SELECT id, company_id, name, email, role, active FROM users WHERE id = ?`, [id]);
+      if (!user && cleanEmail) {
+        user = queryOne(`SELECT id, company_id, name, email, role, active FROM users WHERE email = ?`, [cleanEmail]);
       }
 
-      if (password && password.trim().length > 0) {
+      if (!user) {
+        // User was not yet in SQLite; insert them now so their record and credentials exist locally
+        const targetId = id || `usr-${Date.now()}`;
+        const now = new Date().toISOString();
+        runSql(
+          `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [targetId, targetCompanyId, name, cleanEmail, cleanPassword || 'Cast123', role || 'TÉCNICO', active !== undefined ? (active ? 1 : 0) : 1, now]
+        );
+        const created = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
+        return res.json(created);
+      }
+
+      const targetId = user.id;
+
+      if (cleanPassword) {
         runSql(
           `UPDATE users SET company_id = ?, name = ?, email = ?, password = ?, role = ?, active = ? WHERE id = ?`,
-          [company_id, name, email.trim().toLowerCase(), password, role, active !== undefined ? active : 1, id]
+          [targetCompanyId, name, cleanEmail, cleanPassword, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
         );
       } else {
         runSql(
           `UPDATE users SET company_id = ?, name = ?, email = ?, role = ?, active = ? WHERE id = ?`,
-          [company_id, name, email.trim().toLowerCase(), role, active !== undefined ? active : 1, id]
+          [targetCompanyId, name, cleanEmail, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
         );
       }
 
-      const updated = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [id]);
+      const updated = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
       return res.json(updated);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -324,18 +368,41 @@ async function startServer() {
   app.post('/api/users/:id/reset-password', (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { password } = req.body;
+      const { password, email } = req.body;
       if (!password || password.trim().length === 0) {
         return res.status(400).json({ error: 'Nova senha é obrigatória.' });
       }
 
-      const existing = queryOne(`SELECT id, email, name FROM users WHERE id = ?`, [id]);
+      const cleanPassword = password.trim();
+
+      // Find user by ID or by email
+      let existing = queryOne(`SELECT id, email, name FROM users WHERE id = ?`, [id]);
+      if (!existing && email) {
+        existing = queryOne(`SELECT id, email, name FROM users WHERE email = ?`, [email.trim().toLowerCase()]);
+      }
       if (!existing) {
+        existing = queryOne(`SELECT id, email, name FROM users WHERE email = ?`, [id.trim().toLowerCase()]);
+      }
+
+      if (!existing) {
+        // If user was not yet in SQLite, insert a record so login works
+        const targetEmail = email ? email.trim().toLowerCase() : (id.includes('@') ? id.trim().toLowerCase() : '');
+        if (targetEmail) {
+          const now = new Date().toISOString();
+          const newId = id || `usr-${Date.now()}`;
+          runSql(
+            `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
+             VALUES (?, NULL, ?, ?, ?, 'GERENTE', 1, ?)`,
+            [newId, targetEmail.split('@')[0], targetEmail, cleanPassword, now]
+          );
+          return res.json({ success: true, message: 'Senha registrada e atualizada com sucesso.' });
+        }
         return res.status(404).json({ error: 'Usuário não encontrado.' });
       }
 
-      runSql(`UPDATE users SET password = ? WHERE id = ?`, [password.trim(), id]);
-      return res.json({ success: true, message: 'Senha recuperada e atualizada com sucesso.' });
+      runSql(`UPDATE users SET password = ? WHERE id = ?`, [cleanPassword, existing.id]);
+      console.log(`[PASSWORD RESET] Senha do usuário ${existing.email} (ID: ${existing.id}) atualizada com sucesso no banco.`);
+      return res.json({ success: true, message: `Senha do usuário ${existing.name} atualizada com sucesso.` });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
@@ -433,8 +500,14 @@ async function startServer() {
   app.post('/api/technicians', (req: Request, res: Response) => {
     try {
       const { company_id, name, phone, email, role_title } = req.body;
-      if (!name || !company_id) {
-        return res.status(400).json({ error: 'Nome e empresa são obrigatórios.' });
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do técnico é obrigatório.' });
+      }
+
+      let effectiveCompanyId = company_id;
+      if (!effectiveCompanyId) {
+        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = comp?.id || 'comp-cast';
       }
 
       const id = `tec-${Date.now()}`;
@@ -442,7 +515,7 @@ async function startServer() {
       runSql(
         `INSERT INTO technicians (id, company_id, name, phone, email, role_title, active, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
-        [id, company_id, name, phone || '', email || '', role_title || '', now]
+        [id, effectiveCompanyId, name.trim(), phone || '', email || '', role_title || 'Técnico Especialista', now]
       );
 
       const created = queryOne(`SELECT * FROM technicians WHERE id = ?`, [id]);
@@ -511,8 +584,14 @@ async function startServer() {
   app.post('/api/clients', (req: Request, res: Response) => {
     try {
       const { company_id, name, document, email, phone, address, city, state, notes } = req.body;
-      if (!name || !company_id) {
-        return res.status(400).json({ error: 'Nome e empresa são obrigatórios.' });
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do cliente é obrigatório.' });
+      }
+
+      let effectiveCompanyId = company_id;
+      if (!effectiveCompanyId) {
+        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = comp?.id || 'comp-cast';
       }
 
       const id = `cli-${Date.now()}`;
@@ -520,7 +599,7 @@ async function startServer() {
       runSql(
         `INSERT INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, company_id, name, document || '', email || '', phone || '', address || '', city || '', state || '', notes || '', now]
+        [id, effectiveCompanyId, name.trim(), document || '', email || '', phone || '', address || '', city || '', state || '', notes || '', now]
       );
 
       const created = queryOne(`SELECT * FROM clients WHERE id = ?`, [id]);
@@ -653,12 +732,26 @@ async function startServer() {
         photos
       } = req.body;
 
-      if (!company_id || !client_id || !description) {
-        return res.status(400).json({ error: 'Empresa, cliente e descrição são obrigatórios.' });
+      if (!client_id) {
+        return res.status(400).json({ error: 'Por favor, selecione um cliente para o orçamento.' });
       }
 
+      let effectiveCompanyId = company_id;
+      if (!effectiveCompanyId) {
+        const clientRow = queryOne(`SELECT company_id FROM clients WHERE id = ?`, [client_id]);
+        if (clientRow?.company_id) effectiveCompanyId = clientRow.company_id;
+      }
+      if (!effectiveCompanyId) {
+        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = comp?.id || 'comp-cast';
+      }
+
+      const effectiveDescription = (description && description.trim()) ||
+        (Array.isArray(items) && items[0]?.description && items[0].description.trim()) ||
+        'Orçamento de serviços técnicos especializados';
+
       // Generate sequential quote number per company
-      const lastQuote = queryOne(`SELECT max(quote_number) as max_num FROM quotes WHERE company_id = ?`, [company_id]);
+      const lastQuote = queryOne(`SELECT max(quote_number) as max_num FROM quotes WHERE company_id = ?`, [effectiveCompanyId]);
       const nextNumber = (lastQuote?.max_num || 1000) + 1;
 
       const id = `quote-${Date.now()}`;
@@ -682,7 +775,7 @@ async function startServer() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
-          company_id,
+          effectiveCompanyId,
           nextNumber,
           client_id,
           technician_id || null,
@@ -690,7 +783,7 @@ async function startServer() {
           date || now.split('T')[0],
           validity_date || null,
           status || 'Rascunho',
-          description,
+          effectiveDescription,
           address || '',
           subtotal,
           numDiscount,
@@ -1000,7 +1093,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/work-orders', (req: Request, res: Response) => {
+    app.post('/api/work-orders', (req: Request, res: Response) => {
     try {
       const {
         company_id,
@@ -1023,11 +1116,27 @@ async function startServer() {
         photos
       } = req.body;
 
-      if (!company_id || !client_id || !technician_id || !service_description) {
-        return res.status(400).json({ error: 'Empresa, cliente, técnico e descrição do serviço são obrigatórios.' });
+      if (!client_id) {
+        return res.status(400).json({ error: 'Por favor, selecione um cliente para a ordem de serviço.' });
       }
 
-      const lastOrder = queryOne(`SELECT max(order_number) as max_num FROM work_orders WHERE company_id = ?`, [company_id]);
+      let effectiveCompanyId = company_id;
+      if (!effectiveCompanyId) {
+        const clientRow = queryOne(`SELECT company_id FROM clients WHERE id = ?`, [client_id]);
+        if (clientRow?.company_id) effectiveCompanyId = clientRow.company_id;
+      }
+      if (!effectiveCompanyId) {
+        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = comp?.id || 'comp-cast';
+      }
+
+      const effectiveDescription = (service_description && service_description.trim()) ||
+        (Array.isArray(items) && items[0]?.description && items[0].description.trim()) ||
+        'Execução de serviços técnicos especializados em campo';
+
+      const effectiveTechId = technician_id || '';
+
+      const lastOrder = queryOne(`SELECT max(order_number) as max_num FROM work_orders WHERE company_id = ?`, [effectiveCompanyId]);
       const nextNumber = (lastOrder?.max_num || 2000) + 1;
 
       const id = `wo-${Date.now()}`;
@@ -1050,15 +1159,15 @@ async function startServer() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
-          company_id,
+          effectiveCompanyId,
           nextNumber,
           quote_id || null,
           client_id,
-          technician_id,
+          effectiveTechId,
           created_by || 'Sistema',
           date || now.split('T')[0],
           status || 'Aberta',
-          service_description,
+          effectiveDescription,
           address || '',
           subtotal,
           numDiscount,
@@ -1092,17 +1201,19 @@ async function startServer() {
         runSql(
           `INSERT INTO work_order_photos (id, work_order_id, company_id, url, caption, width, height, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [photoId, id, company_id, photo.url, photo.caption || '', photo.width || 600, photo.height || 900, now]
+          [photoId, id, effectiveCompanyId, photo.url, photo.caption || '', photo.width || 600, photo.height || 900, now]
         );
       });
 
       // Notification
-      const tech = queryOne(`SELECT name FROM technicians WHERE id = ?`, [technician_id]);
-      runSql(
-        `INSERT INTO notifications (id, company_id, title, message, channel, recipient, status, created_at)
-         VALUES (?, ?, ?, ?, 'system', '', 'sent', ?)`,
-        [`notif-${Date.now()}`, company_id, `Nova OS #${nextNumber} Criada`, `Atribuída ao técnico ${tech?.name || 'Designado'} no valor de R$ ${total.toFixed(2)}.`, now]
-      );
+      const tech = effectiveTechId ? queryOne(`SELECT name FROM technicians WHERE id = ?`, [effectiveTechId]) : null;
+      try {
+        runSql(
+          `INSERT INTO notifications (id, company_id, title, message, channel, recipient, status, created_at)
+           VALUES (?, ?, ?, ?, 'system', '', 'sent', ?)`,
+          [`notif-${Date.now()}`, effectiveCompanyId, `Nova OS #${nextNumber} Criada`, `Atribuída ao técnico ${tech?.name || 'A Designar'} no valor de R$ ${total.toFixed(2)}.`, now]
+        );
+      } catch {}
 
       return res.status(201).json({ id, order_number: nextNumber, total, message: 'Ordem de Serviço criada com sucesso!' });
     } catch (err: any) {
@@ -1169,7 +1280,7 @@ async function startServer() {
          WHERE id = ?`,
         [
           client_id || existing.client_id,
-          technician_id || existing.technician_id,
+          technician_id !== undefined ? (technician_id || '') : (existing.technician_id || ''),
           date || existing.date,
           status || existing.status,
           service_description || existing.service_description,
@@ -1581,18 +1692,35 @@ async function startServer() {
         ORDER BY wo.created_at DESC LIMIT 5
       `, oParams);
 
+      const quotesCount = quotesStats?.count || 0;
+      const ordersCount = ordersStats?.count || 0;
+      const quotesTotal = quotesStats?.total || 0;
+      const ordersTotal = ordersStats?.total || 0;
+      const clientsCount = clientsStats?.count || 0;
+      const techniciansCount = techsStats?.count || 0;
+      const companiesCountVal = companiesCount?.count || 0;
+
       return res.json({
-        quotesCount: quotesStats?.count || 0,
-        ordersCount: ordersStats?.count || 0,
-        quotesTotal: quotesStats?.total || 0,
-        ordersTotal: ordersStats?.total || 0,
-        clientsCount: clientsStats?.count || 0,
-        techniciansCount: techsStats?.count || 0,
-        companiesCount: companiesCount?.count || 0,
+        quotesCount,
+        ordersCount,
+        quotesTotal,
+        ordersTotal,
+        clientsCount,
+        techniciansCount,
+        companiesCount: companiesCountVal,
         statusDistribution: {
           quotes: quotesStatusMap,
           orders: ordersStatusMap
         },
+        total_quotes: quotesCount,
+        total_quotes_value: quotesTotal,
+        total_orders: ordersCount,
+        total_orders_value: ordersTotal,
+        total_clients: clientsCount,
+        total_technicians: techniciansCount,
+        total_companies: companiesCountVal,
+        quotes_by_status: quotesStatusMap,
+        orders_by_status: ordersStatusMap,
         recentQuotes,
         recentOrders
       });
@@ -1960,9 +2088,7 @@ async function startServer() {
   // ==========================================
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-      },
+      server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);

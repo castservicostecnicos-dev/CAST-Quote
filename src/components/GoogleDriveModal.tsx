@@ -124,8 +124,18 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       setUser(result.user);
       setHasToken(true);
     } catch (err: any) {
-      console.error('Google Sign-in failed:', err);
-      setErrorMessage(err.message || 'Falha ao autenticar com o Google Drive.');
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('fechada antes de')) {
+        setErrorMessage(
+          'A janela de login do Google foi fechada antes de autorizar. Clique em "Conectar Google Drive" quando desejar autorizar o envio.'
+        );
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMessage(
+          'A janela pop-up foi bloqueada pelo navegador. Permita pop-ups para esta página ou abra o sistema em uma nova aba.'
+        );
+      } else {
+        console.error('Google Sign-in failed:', err);
+        setErrorMessage(err.message || 'Falha ao autenticar com o Google Drive.');
+      }
     } finally {
       setAuthenticating(false);
     }
@@ -206,8 +216,18 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         message: 'Árvore de arquivos e fotos organizadas com sucesso no Google Drive!'
       });
     } catch (err: any) {
-      console.error('Erro na sincronização:', err);
-      setErrorMessage(err.message || 'Erro ao sincronizar arquivos e fotos com o Google Drive.');
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('fechada antes de')) {
+        setErrorMessage(
+          'Envio cancelado: a janela de autenticação do Google foi fechada antes de autorizar o acesso.'
+        );
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMessage(
+          'A janela pop-up foi bloqueada pelo navegador. Permita pop-ups ou abra a aplicação em uma nova aba.'
+        );
+      } else {
+        console.error('Erro na sincronização:', err);
+        setErrorMessage(err.message || 'Erro ao sincronizar arquivos e fotos com o Google Drive.');
+      }
     } finally {
       setLoading(false);
       setProgress(null);

@@ -104,14 +104,14 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
               <span>Excel</span>
             </button>
 
-            {isDev && onOpenDrive && (
+            {onOpenDrive && (
               <button
                 onClick={onOpenDrive}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-900 text-purple-200 text-xs font-semibold hover:bg-purple-800 border border-purple-700 transition"
-                title="Salvar no Google Drive (DEV)"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-700 text-white text-xs font-semibold hover:bg-purple-800 transition shadow-xs"
+                title="Salvar e sincronizar PDF e fotos no Google Drive"
               >
-                <Cloud className="w-3.5 h-3.5 text-purple-300" />
-                <span>Drive (DEV)</span>
+                <Cloud className="w-3.5 h-3.5 text-purple-200" />
+                <span>Salvar no Drive</span>
               </button>
             )}
 

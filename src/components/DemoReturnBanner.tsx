@@ -1,18 +1,33 @@
-import React from 'react';
-import { Presentation, ArrowLeft, Layers } from 'lucide-react';
+import React, { useState } from 'react';
+import { Presentation, Layers, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const DemoReturnBanner: React.FC = () => {
   const { user, login } = useAuth();
-  const isDemoActive = typeof window !== 'undefined' && localStorage.getItem('cast_demo_mode') === 'true';
+  const [dismissed, setDismissed] = useState(false);
 
-  // Only show if user is NOT in DEV and demo mode was activated
-  if (!isDemoActive || user?.role === 'DEV' || !user) {
+  // Strictly only show if an explicit DEV simulation was initiated in this session
+  // Real client logins will NEVER have cast_dev_simulating in sessionStorage
+  const isDevSimulation =
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('cast_dev_simulating') === 'true';
+
+  // Demo banner should NEVER appear for DEV account or real client logins
+  if (!isDevSimulation || dismissed || user?.role === 'DEV' || !user) {
     return null;
   }
 
+  const handleDismiss = () => {
+    sessionStorage.removeItem('cast_dev_simulating');
+    localStorage.removeItem('cast_demo_mode');
+    setDismissed(true);
+  };
+
   const handleReturnToDev = async () => {
     try {
+      sessionStorage.removeItem('cast_dev_simulating');
+      localStorage.removeItem('cast_demo_mode');
+      setDismissed(true);
       await login('ale11062@gmail.com', 'cast.2468');
     } catch (err: any) {
       alert('Erro ao retornar para o perfil DEV: ' + err.message);
@@ -28,21 +43,32 @@ export const DemoReturnBanner: React.FC = () => {
 
         <div className="text-xs">
           <span className="font-bold text-purple-300 block leading-tight">
-            Modo Demonstração Ativo
+            Simulação de Perfil (DEV)
           </span>
           <span className="text-[11px] text-slate-300">
             Visualizando como <strong className="text-white">{user.name} ({user.role})</strong>
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleReturnToDev}
-          className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow-md active:scale-95 flex-none"
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Voltar para DEV</span>
-        </button>
+        <div className="flex items-center gap-1.5 ml-1">
+          <button
+            type="button"
+            onClick={handleReturnToDev}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow-md active:scale-95 flex-none"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Voltar para DEV</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            title="Fechar simulação"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

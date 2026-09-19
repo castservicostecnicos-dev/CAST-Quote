@@ -73,7 +73,7 @@ export const ClientsList: React.FC = () => {
     if (!name) return;
     setSaving(true);
     try {
-      const targetCompanyId = activeCompany?.id || selectedCompanyId || companies[0]?.id;
+      const targetCompanyId = activeCompany?.id || selectedCompanyId || companies[0]?.id || 'comp-cast';
       const payload = {
         company_id: targetCompanyId,
         name,

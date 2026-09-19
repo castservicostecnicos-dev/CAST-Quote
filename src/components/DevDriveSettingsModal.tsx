@@ -151,7 +151,15 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
       );
       loadBackendSettings();
     } catch (err: any) {
-      if (err.code !== 'auth/popup-closed-by-user') {
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('fechada antes de')) {
+        setErrorMessage(
+          'A janela de login do Google foi fechada antes de autorizar. Clique em "Conectar Conta Google" quando desejar vincular a conta.'
+        );
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMessage(
+          'O navegador bloqueou a janela pop-up. Permita pop-ups para esta página ou abra o sistema em uma nova aba para prosseguir.'
+        );
+      } else {
         setErrorMessage(
           err.message || 'Falha ao autenticar com a conta Google selecionada.'
         );
@@ -201,7 +209,17 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
         `Conexão validada com sucesso! A pasta raiz "${rootFolderName}" está ativa na conta ${res.accountEmail}.`
       );
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao testar conexão com o Google Drive.');
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('fechada antes de')) {
+        setErrorMessage(
+          'Teste cancelado: a janela de autenticação do Google foi fechada antes da confirmação.'
+        );
+      } else if (err.code === 'auth/popup-blocked') {
+        setErrorMessage(
+          'Pop-up bloqueado pelo navegador. Habilite pop-ups para autenticar com o Google Drive.'
+        );
+      } else {
+        setErrorMessage(err.message || 'Erro ao testar conexão com o Google Drive.');
+      }
     } finally {
       setTesting(false);
     }

@@ -266,12 +266,12 @@ function MainApp() {
                 setShareDoc(pdfDoc);
                 setShareModalOpen(true);
               }}
-              onOpenDrive={isDev ? () => {
+              onOpenDrive={() => {
                 setPdfModalOpen(false);
                 setDriveType(pdfType);
                 setDriveDoc(pdfDoc);
                 setDriveModalOpen(true);
-              } : undefined}
+              }}
             />
 
             <ShareModal
@@ -282,27 +282,23 @@ function MainApp() {
               company={getEffectiveCompany(shareDoc)}
             />
 
-            {isDev && (
-              <GoogleDriveModal
-                isOpen={driveModalOpen}
-                onClose={() => setDriveModalOpen(false)}
-                type={driveType}
-                data={driveDoc}
-                company={getEffectiveCompany(driveDoc)}
-              />
-            )}
+            <GoogleDriveModal
+              isOpen={driveModalOpen}
+              onClose={() => setDriveModalOpen(false)}
+              type={driveType}
+              data={driveDoc}
+              company={getEffectiveCompany(driveDoc)}
+            />
 
             <CommercialPresentationModal
               isOpen={presentationModalOpen}
               onClose={() => setPresentationModalOpen(false)}
             />
 
-            {isDev && (
-              <DevDriveSettingsModal
-                isOpen={driveSettingsModalOpen}
-                onClose={() => setDriveSettingsModalOpen(false)}
-              />
-            )}
+            <DevDriveSettingsModal
+              isOpen={driveSettingsModalOpen}
+              onClose={() => setDriveSettingsModalOpen(false)}
+            />
           </>
         );
       })()}

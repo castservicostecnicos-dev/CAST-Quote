@@ -154,19 +154,15 @@ export const firebaseCompanies = {
           companies.push(docSnap.data() as Company);
         });
 
-        // Fallback: se estiver vazio, tenta inicializar padrão
+        // Fallback: se estiver vazio, tenta inicializar padrão em background sem bloquear
         if (companies.length === 0) {
-          await initializeFirestoreDefaults();
-          const retrySnap = await getDocs(collection(db, 'companies'));
-          retrySnap.forEach((docSnap) => {
-            companies.push(docSnap.data() as Company);
-          });
+          initializeFirestoreDefaults().catch(() => {});
         }
 
         return companies.filter((c) => c.active !== 0);
       })();
 
-      return await withTimeout(fetchPromise, 1500, []);
+      return await withTimeout(fetchPromise, 1200, []);
     } catch (err) {
       console.warn('Firestore offline ou inacessível ao buscar empresas');
       return [];
@@ -179,7 +175,7 @@ export const firebaseCompanies = {
     return snap.data() as Company;
   },
 
-  async create(company: Partial<Company>): Promise<Company> {
+  async create(company: Partial<Company> & { manager_name?: string; manager_email?: string; manager_password?: string }): Promise<Company> {
     const id = company.id || `comp-${Date.now()}`;
     const newCompany: Company = {
       id,
@@ -195,32 +191,65 @@ export const firebaseCompanies = {
       active: company.active ?? 1,
       created_at: company.created_at || new Date().toISOString()
     };
-    await setDoc(doc(db, 'companies', id), newCompany);
+    // Non-blocking timeout so UI NEVER hangs if Firestore takes long
+    await withTimeout(setDoc(doc(db, 'companies', id), newCompany), 3000, null);
+
+    // If manager user info was supplied, create manager in Firestore
+    if (company.manager_email && company.manager_email.trim()) {
+      try {
+        const mgrEmail = company.manager_email.trim().toLowerCase();
+        const mgrName = company.manager_name?.trim() || `Gerente ${newCompany.name}`;
+        const mgrPass = company.manager_password?.trim() || 'Cast123';
+        const mgrId = `usr-${Date.now()}`;
+        const mgrUser: User = {
+          id: mgrId,
+          company_id: id,
+          name: mgrName,
+          email: mgrEmail,
+          role: 'GERENTE',
+          active: 1,
+          created_at: new Date().toISOString()
+        };
+        await withTimeout(
+          setDoc(doc(db, 'users', mgrId), {
+            ...mgrUser,
+            password_hash: mgrPass
+          }),
+          3000,
+          null
+        );
+      } catch (err) {
+        console.warn('Erro ao criar gerente no Firestore:', err);
+      }
+    }
+
     return newCompany;
   },
 
   async update(id: string, updates: Partial<Company>): Promise<Company> {
     const refDoc = doc(db, 'companies', id);
-    const existingSnap = await getDoc(refDoc);
-    const existing = existingSnap.exists() ? (existingSnap.data() as Company) : ({} as Company);
+    const existingSnap = await withTimeout(getDoc(refDoc), 2000, null);
+    const existing = existingSnap && existingSnap.exists() ? (existingSnap.data() as Company) : ({} as Company);
 
     const merged: Company = {
       ...existing,
       ...updates,
       id
     };
-    await setDoc(refDoc, merged, { merge: true });
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 3000, null);
 
     // CRITICAL REQUIREMENT: Quando desativar a empresa, todos os usuários criados pela empresa devem ser desativados automaticamente
     if (updates.active === 0) {
       try {
         const usersColl = collection(db, 'users');
         const qUsers = query(usersColl, where('company_id', '==', id));
-        const userSnaps = await getDocs(qUsers);
-        for (const uDoc of userSnaps.docs) {
-          const uData = uDoc.data();
-          if (uData && uData.role !== 'DEV') {
-            await updateDoc(doc(db, 'users', uDoc.id), { active: 0 });
+        const userSnaps = await withTimeout(getDocs(qUsers), 2500, null);
+        if (userSnaps && userSnaps.docs) {
+          for (const uDoc of userSnaps.docs) {
+            const uData = uDoc.data();
+            if (uData && uData.role !== 'DEV') {
+              await withTimeout(updateDoc(doc(db, 'users', uDoc.id), { active: 0 }), 2000, null);
+            }
           }
         }
       } catch (e) {
@@ -332,8 +361,9 @@ export const firebaseQuotes = {
 
   async create(quote: Partial<Quote>): Promise<Quote> {
     const id = quote.id || `quote-${Date.now()}`;
-    const allQuotes = await getDocs(collection(db, 'quotes'));
-    const nextNumber = (quote.quote_number && quote.quote_number > 0) ? quote.quote_number : allQuotes.size + 1001;
+    const nextNumber = (quote.quote_number && quote.quote_number > 0)
+      ? quote.quote_number
+      : (Math.floor(Date.now() / 1000) % 90000 + 1000);
 
     const newQuote: Quote = {
       id,
@@ -363,14 +393,14 @@ export const firebaseQuotes = {
       updated_at: new Date().toISOString()
     };
 
-    await setDoc(doc(db, 'quotes', id), newQuote);
+    await withTimeout(setDoc(doc(db, 'quotes', id), newQuote), 2500, null);
     return newQuote;
   },
 
   async update(id: string, updates: Partial<Quote>): Promise<Quote> {
     const refDoc = doc(db, 'quotes', id);
-    const existingSnap = await getDoc(refDoc);
-    const existing = existingSnap.exists() ? (existingSnap.data() as Quote) : ({} as Quote);
+    const existingSnap = await withTimeout(getDoc(refDoc), 2000, null);
+    const existing = existingSnap && existingSnap.exists() ? (existingSnap.data() as Quote) : ({} as Quote);
 
     const merged: Quote = {
       ...existing,
@@ -378,7 +408,7 @@ export const firebaseQuotes = {
       id,
       updated_at: new Date().toISOString()
     };
-    await setDoc(refDoc, merged, { merge: true });
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 2500, null);
     return merged;
   },
 
@@ -438,8 +468,9 @@ export const firebaseWorkOrders = {
 
   async create(order: Partial<WorkOrder>): Promise<WorkOrder> {
     const id = order.id || `order-${Date.now()}`;
-    const allOrders = await getDocs(collection(db, 'work_orders'));
-    const nextNumber = (order.order_number && order.order_number > 0) ? order.order_number : allOrders.size + 1001;
+    const nextNumber = (order.order_number && order.order_number > 0)
+      ? order.order_number
+      : (Math.floor(Date.now() / 1000) % 90000 + 2000);
 
     const newOrder: WorkOrder = {
       id,
@@ -469,14 +500,14 @@ export const firebaseWorkOrders = {
       updated_at: new Date().toISOString()
     };
 
-    await setDoc(doc(db, 'work_orders', id), newOrder);
+    await withTimeout(setDoc(doc(db, 'work_orders', id), newOrder), 2500, null);
     return newOrder;
   },
 
   async update(id: string, updates: Partial<WorkOrder>): Promise<WorkOrder> {
     const refDoc = doc(db, 'work_orders', id);
-    const existingSnap = await getDoc(refDoc);
-    const existing = existingSnap.exists() ? (existingSnap.data() as WorkOrder) : ({} as WorkOrder);
+    const existingSnap = await withTimeout(getDoc(refDoc), 2000, null);
+    const existing = existingSnap && existingSnap.exists() ? (existingSnap.data() as WorkOrder) : ({} as WorkOrder);
 
     const merged: WorkOrder = {
       ...existing,
@@ -484,7 +515,7 @@ export const firebaseWorkOrders = {
       id,
       updated_at: new Date().toISOString()
     };
-    await setDoc(refDoc, merged, { merge: true });
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 2500, null);
     return merged;
   },
 
@@ -530,19 +561,19 @@ export const firebaseClients = {
       notes: client.notes || '',
       created_at: new Date().toISOString()
     };
-    await setDoc(doc(db, 'clients', id), newClient);
+    await withTimeout(setDoc(doc(db, 'clients', id), newClient), 2500, null);
     return newClient;
   },
 
   async update(id: string, updates: Partial<Client>): Promise<Client> {
     const refDoc = doc(db, 'clients', id);
-    await setDoc(refDoc, { ...updates, id }, { merge: true });
-    const snap = await getDoc(refDoc);
-    return snap.data() as Client;
+    await withTimeout(setDoc(refDoc, { ...updates, id }, { merge: true }), 2500, null);
+    const snap = await withTimeout(getDoc(refDoc), 2000, null);
+    return snap && snap.exists() ? (snap.data() as Client) : ({ id, ...updates } as Client);
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await deleteDoc(doc(db, 'clients', id));
+    await withTimeout(deleteDoc(doc(db, 'clients', id)), 2000, null);
     return { success: true };
   }
 };
@@ -558,7 +589,8 @@ export const firebaseTechnicians = {
       if (companyId && userRole !== 'DEV') {
         q = query(coll, where('company_id', '==', companyId));
       }
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), 3000, null);
+      if (!snap) return [];
       const techs: Technician[] = [];
       snap.forEach((docSnap) => techs.push(docSnap.data() as Technician));
       return techs;
@@ -580,19 +612,19 @@ export const firebaseTechnicians = {
       active: tech.active ?? 1,
       created_at: new Date().toISOString()
     };
-    await setDoc(doc(db, 'technicians', id), newTech);
+    await withTimeout(setDoc(doc(db, 'technicians', id), newTech), 2500, null);
     return newTech;
   },
 
   async update(id: string, updates: Partial<Technician>): Promise<Technician> {
     const refDoc = doc(db, 'technicians', id);
-    await setDoc(refDoc, { ...updates, id }, { merge: true });
-    const snap = await getDoc(refDoc);
-    return snap.data() as Technician;
+    await withTimeout(setDoc(refDoc, { ...updates, id }, { merge: true }), 2500, null);
+    const snap = await withTimeout(getDoc(refDoc), 2000, null);
+    return snap && snap.exists() ? (snap.data() as Technician) : ({ id, ...updates } as Technician);
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await deleteDoc(doc(db, 'technicians', id));
+    await withTimeout(deleteDoc(doc(db, 'technicians', id)), 2000, null);
     return { success: true };
   }
 };
@@ -608,7 +640,8 @@ export const firebaseUsers = {
       if (companyId && userRole !== 'DEV') {
         q = query(coll, where('company_id', '==', companyId));
       }
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), 1500, null);
+      if (!snap) return [];
       const users: User[] = [];
       snap.forEach((docSnap) => {
         const u = docSnap.data() as User;
@@ -634,22 +667,31 @@ export const firebaseUsers = {
       active: user.active ?? 1,
       created_at: new Date().toISOString()
     };
-    await setDoc(doc(db, 'users', id), {
-      ...newUser,
-      password_hash: (user as any).password || '123456'
-    });
+    await withTimeout(
+      setDoc(doc(db, 'users', id), {
+        ...newUser,
+        password_hash: (user as any).password || '123456'
+      }),
+      3000,
+      null
+    );
     return newUser;
   },
 
   async update(id: string, updates: Partial<User>): Promise<User> {
     const refDoc = doc(db, 'users', id);
-    await setDoc(refDoc, { ...updates, id }, { merge: true });
-    const snap = await getDoc(refDoc);
-    return snap.data() as User;
+    const dataToSave: any = { ...updates, id };
+    if ((updates as any).password) {
+      dataToSave.password = (updates as any).password;
+      dataToSave.password_hash = (updates as any).password;
+    }
+    await withTimeout(setDoc(refDoc, dataToSave, { merge: true }), 1500, null);
+    const snap = await withTimeout(getDoc(refDoc), 1500, null);
+    return (snap && snap.exists() ? (snap.data() as User) : ({ ...updates, id } as User));
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await deleteDoc(doc(db, 'users', id));
+    await withTimeout(deleteDoc(doc(db, 'users', id)), 1500, null);
     return { success: true };
   }
 };

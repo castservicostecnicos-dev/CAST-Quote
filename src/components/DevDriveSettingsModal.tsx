@@ -159,6 +159,11 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
         setErrorMessage(
           'O navegador bloqueou a janela pop-up. Permita pop-ups para esta página ou abra o sistema em uma nova aba para prosseguir.'
         );
+      } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'onrender.com';
+        setErrorMessage(
+          `Domínio não autorizado pelo Firebase (auth/unauthorized-domain): O domínio "${host}" precisa ser adicionado na lista de "Domínios autorizados" no Firebase Authentication.`
+        );
       } else if (err.code === 'auth/access-denied' || err.message?.includes('403') || err.message?.includes('access_denied')) {
         setErrorMessage(
           'Acesso bloqueado pelo Google (Erro 403): O projeto no Google Cloud está em modo de teste. Para autorizar cast.servicostecnicos@gmail.com, adicione-a em "Usuários de teste" no console do Google Cloud ou conecte diretamente com a conta criadora (clientesiptv.2468@gmail.com).'
@@ -313,6 +318,30 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
                 <AlertCircle className="w-4 h-4 text-amber-600 flex-none mt-0.5" />
                 <span className="flex-1 leading-relaxed">{errorMessage}</span>
               </div>
+              {errorMessage.includes('unauthorized-domain') && (
+                <div className="mt-1 pt-2 border-t border-amber-200/80 flex flex-col gap-2 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href="https://console.firebase.google.com/project/gen-lang-client-0996223131/authentication/settings"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-2xs transition"
+                    >
+                      <span>Abrir Configurações do Firebase Console</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <div className="text-amber-800 bg-amber-100/70 p-2.5 rounded-xl border border-amber-200">
+                    <p className="font-bold mb-1">Como autorizar seu domínio no Firebase:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Acesse o link acima e vá na seção <strong>Domínios autorizados</strong> (Authorized domains).</li>
+                      <li>Clique no botão <strong>Adicionar domínio</strong> (Add domain).</li>
+                      <li>Digite <code className="font-bold font-mono bg-white px-1.5 py-0.5 rounded border border-amber-300 select-all">{typeof window !== 'undefined' ? window.location.hostname : 'onrender.com'}</code> (ou simplesmente adicione <code className="font-bold font-mono bg-white px-1.5 py-0.5 rounded border border-amber-300 select-all">onrender.com</code>).</li>
+                      <li>Clique em <strong>Salvar</strong> e tente conectar novamente.</li>
+                    </ol>
+                  </div>
+                </div>
+              )}
               {errorMessage.includes('403') && (
                 <div className="mt-1 pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-2 text-[11px]">
                   <a

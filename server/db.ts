@@ -254,9 +254,13 @@ function initSchema(db: Database) {
       root_folder_name TEXT DEFAULT 'CAST_Quote',
       auto_sync INTEGER DEFAULT 1,
       sync_photos INTEGER DEFAULT 1,
+      created_at TEXT,
       updated_at TEXT NOT NULL
     );
   `);
+
+  // Migration check: ensure created_at exists on drive_settings table
+  try { db.run(`ALTER TABLE drive_settings ADD COLUMN created_at TEXT;`); } catch {}
 
   // Migration check: ensure primary_color column exists on companies table
   try {

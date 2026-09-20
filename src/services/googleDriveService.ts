@@ -125,6 +125,21 @@ export const googleSignIn = async (
       throw friendlyError;
     }
 
+    const isUnauthorizedDomain =
+      error?.code === 'auth/unauthorized-domain' ||
+      error?.message?.includes('unauthorized-domain');
+
+    if (isUnauthorizedDomain) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'onrender.com';
+      console.warn(`[Google Drive] Domínio não autorizado no Firebase Auth: ${currentHost}`);
+      const friendlyError: any = new Error(
+        `Domínio não autorizado pelo Firebase (auth/unauthorized-domain): O domínio "${currentHost}" precisa ser adicionado na lista de "Domínios autorizados" no Firebase Console.`
+      );
+      friendlyError.code = 'auth/unauthorized-domain';
+      friendlyError.hostname = currentHost;
+      throw friendlyError;
+    }
+
     const isAccessDenied =
       error?.code === 'auth/access-denied' ||
       error?.message?.includes('access_denied') ||

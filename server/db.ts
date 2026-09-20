@@ -305,9 +305,8 @@ function initSchema(db: Database) {
         [nowIso]
       );
     } else {
-      // Keep existing password intact when already configured
       db.run(
-        `UPDATE users SET role = 'DEV', company_id = NULL, active = 1, name = 'Desenvolvedor Master (Ale)'
+        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'Desenvolvedor Master (Ale)'
          WHERE email = 'ale11062@gmail.com'`
       );
     }
@@ -321,10 +320,24 @@ function initSchema(db: Database) {
         [nowIso]
       );
     } else {
-      // Keep existing password intact when already configured
       db.run(
-        `UPDATE users SET role = 'DEV', company_id = NULL, active = 1, name = 'Administrador Master DEV'
+        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'Administrador Master DEV'
          WHERE email = 'clientesiptv.2468@gmail.com'`
+      );
+    }
+
+    // DEV CAST Serviços Técnicos
+    const existingCast = queryOne(`SELECT * FROM users WHERE email = ?`, ['cast.servicostecnicos@gmail.com']);
+    if (!existingCast) {
+      db.run(
+        `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
+         VALUES ('usr-dev-cast', NULL, 'CAST Serviços Técnicos (DEV)', 'cast.servicostecnicos@gmail.com', 'cast.2468', 'DEV', 1, ?)`,
+        [nowIso]
+      );
+    } else {
+      db.run(
+        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'CAST Serviços Técnicos (DEV)'
+         WHERE email = 'cast.servicostecnicos@gmail.com'`
       );
     }
 

@@ -22,7 +22,7 @@ import { WorkOrder, Client, Technician, ItemRow, PhotoRecord } from '../types';
 import { VerticalCameraModal } from './VerticalCameraModal';
 import { SignatureModal } from './SignatureModal';
 import { QuickClientModal } from './QuickClientModal';
-import { COMMON_ITEM_SUGGESTIONS } from '../data/itemSuggestions';
+import { COMMON_ITEM_SUGGESTIONS } from '../constants/itemSuggestions';
 
 interface WorkOrderModalProps {
   isOpen: boolean;

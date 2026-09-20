@@ -399,16 +399,12 @@ export const firebaseQuotes = {
 
   async update(id: string, updates: Partial<Quote>): Promise<Quote> {
     const refDoc = doc(db, 'quotes', id);
-    const existingSnap = await withTimeout(getDoc(refDoc), 2000, null);
-    const existing = existingSnap && existingSnap.exists() ? (existingSnap.data() as Quote) : ({} as Quote);
-
     const merged: Quote = {
-      ...existing,
-      ...updates,
+      ...(updates as any),
       id,
       updated_at: new Date().toISOString()
     };
-    await withTimeout(setDoc(refDoc, merged, { merge: true }), 2500, null);
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
     return merged;
   },
 
@@ -506,16 +502,12 @@ export const firebaseWorkOrders = {
 
   async update(id: string, updates: Partial<WorkOrder>): Promise<WorkOrder> {
     const refDoc = doc(db, 'work_orders', id);
-    const existingSnap = await withTimeout(getDoc(refDoc), 2000, null);
-    const existing = existingSnap && existingSnap.exists() ? (existingSnap.data() as WorkOrder) : ({} as WorkOrder);
-
     const merged: WorkOrder = {
-      ...existing,
-      ...updates,
+      ...(updates as any),
       id,
       updated_at: new Date().toISOString()
     };
-    await withTimeout(setDoc(refDoc, merged, { merge: true }), 2500, null);
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
     return merged;
   },
 
@@ -567,13 +559,13 @@ export const firebaseClients = {
 
   async update(id: string, updates: Partial<Client>): Promise<Client> {
     const refDoc = doc(db, 'clients', id);
-    await withTimeout(setDoc(refDoc, { ...updates, id }, { merge: true }), 2500, null);
-    const snap = await withTimeout(getDoc(refDoc), 2000, null);
-    return snap && snap.exists() ? (snap.data() as Client) : ({ id, ...updates } as Client);
+    const merged = { ...updates, id } as Client;
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
+    return merged;
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await withTimeout(deleteDoc(doc(db, 'clients', id)), 2000, null);
+    await withTimeout(deleteDoc(doc(db, 'clients', id)), 1500, null);
     return { success: true };
   }
 };
@@ -612,19 +604,19 @@ export const firebaseTechnicians = {
       active: tech.active ?? 1,
       created_at: new Date().toISOString()
     };
-    await withTimeout(setDoc(doc(db, 'technicians', id), newTech), 2500, null);
+    await withTimeout(setDoc(doc(db, 'technicians', id), newTech), 1500, null);
     return newTech;
   },
 
   async update(id: string, updates: Partial<Technician>): Promise<Technician> {
     const refDoc = doc(db, 'technicians', id);
-    await withTimeout(setDoc(refDoc, { ...updates, id }, { merge: true }), 2500, null);
-    const snap = await withTimeout(getDoc(refDoc), 2000, null);
-    return snap && snap.exists() ? (snap.data() as Technician) : ({ id, ...updates } as Technician);
+    const merged = { ...updates, id } as Technician;
+    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
+    return merged;
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await withTimeout(deleteDoc(doc(db, 'technicians', id)), 2000, null);
+    await withTimeout(deleteDoc(doc(db, 'technicians', id)), 1500, null);
     return { success: true };
   }
 };

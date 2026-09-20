@@ -70,27 +70,32 @@ export const ClientsList: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name.trim()) return;
     setSaving(true);
     try {
       const targetCompanyId = activeCompany?.id || selectedCompanyId || companies[0]?.id || 'comp-cast';
       const payload = {
         company_id: targetCompanyId,
-        name,
-        document,
-        email,
-        phone,
-        address,
-        city,
-        state,
-        notes
+        name: name.trim(),
+        document: document.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        notes: notes.trim()
       };
       if (clientToEdit) {
-        await api.updateClient(clientToEdit.id, payload);
+        const updated = await api.updateClient(clientToEdit.id, payload);
+        setClients((prev) =>
+          prev.map((c) => (c.id === clientToEdit.id ? { ...c, ...payload, ...updated } : c))
+        );
       } else {
-        await api.createClient(payload);
+        const created = await api.createClient(payload);
+        setClients((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
       }
       setModalOpen(false);
+      // Atualização suave em segundo plano
       loadClients();
     } catch (err: any) {
       alert('Erro ao salvar cliente: ' + err.message);
@@ -101,11 +106,14 @@ export const ClientsList: React.FC = () => {
 
   const handleDelete = async (client: Client) => {
     if (!confirm(`Deseja excluir o cliente "${client.name}"?`)) return;
+    // Otimista: remove da lista visual imediatamente
+    setClients((prev) => prev.filter((c) => c.id !== client.id));
     try {
       await api.deleteClient(client.id);
       loadClients();
     } catch (err: any) {
       alert('Erro ao excluir: ' + err.message);
+      loadClients();
     }
   };
 

@@ -587,43 +587,69 @@ export const api = {
   },
 
   createTechnician: async (technician: Partial<Technician>): Promise<Technician> => {
+    let created: Technician | null = null;
     try {
-      return await firebaseService.technicians.create(technician);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/technicians`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(technician)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar técnico');
-      return data;
+      if (res.ok) {
+        created = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao cadastrar técnico:', err);
     }
+
+    if (created) {
+      firebaseService.technicians.create({ ...technician, id: created.id }).catch((err) => {
+        console.warn('Firestore ao sincronizar técnico:', err);
+      });
+      return created;
+    }
+
+    // Fallback if local backend is down
+    return await firebaseService.technicians.create(technician);
   },
 
   updateTechnician: async (id: string, technician: Partial<Technician>): Promise<Technician> => {
+    let updated: Technician | null = null;
     try {
-      return await firebaseService.technicians.update(id, technician);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/technicians/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(technician)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao atualizar técnico');
-      return data;
+      if (res.ok) {
+        updated = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao atualizar técnico:', err);
     }
+
+    if (updated) {
+      firebaseService.technicians.update(id, technician).catch((err) => {
+        console.warn('Firestore ao sincronizar técnico:', err);
+      });
+      return updated;
+    }
+
+    return await firebaseService.technicians.update(id, technician);
   },
 
   deleteTechnician: async (id: string): Promise<{ success: boolean }> => {
     try {
-      return await firebaseService.technicians.delete(id);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/technicians/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao excluir técnico');
-      return res.json();
+      if (res.ok) {
+        firebaseService.technicians.delete(id).catch((err) => {
+          console.warn('Firestore ao excluir técnico:', err);
+        });
+        return { success: true };
+      }
+    } catch (err) {
+      console.warn('API local ao excluir técnico:', err);
     }
+    return await firebaseService.technicians.delete(id);
   },
 
   // CLIENTS (Local SQLite API + Firestore mirror)
@@ -651,43 +677,69 @@ export const api = {
   },
 
   createClient: async (client: Partial<Client>): Promise<Client> => {
+    let created: Client | null = null;
     try {
-      return await firebaseService.clients.create(client);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(client)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar cliente');
-      return data;
+      if (res.ok) {
+        created = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao cadastrar cliente:', err);
     }
+
+    if (created) {
+      firebaseService.clients.create({ ...client, id: created.id }).catch((err) => {
+        console.warn('Firestore ao sincronizar cliente:', err);
+      });
+      return created;
+    }
+
+    // Fallback if local backend is down
+    return await firebaseService.clients.create(client);
   },
 
   updateClient: async (id: string, client: Partial<Client>): Promise<Client> => {
+    let updated: Client | null = null;
     try {
-      return await firebaseService.clients.update(id, client);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/clients/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(client)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao atualizar cliente');
-      return data;
+      if (res.ok) {
+        updated = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao atualizar cliente:', err);
     }
+
+    if (updated) {
+      firebaseService.clients.update(id, client).catch((err) => {
+        console.warn('Firestore ao sincronizar cliente:', err);
+      });
+      return updated;
+    }
+
+    return await firebaseService.clients.update(id, client);
   },
 
   deleteClient: async (id: string): Promise<{ success: boolean }> => {
     try {
-      return await firebaseService.clients.delete(id);
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/clients/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao excluir cliente');
-      return res.json();
+      if (res.ok) {
+        firebaseService.clients.delete(id).catch((err) => {
+          console.warn('Firestore ao excluir cliente:', err);
+        });
+        return { success: true };
+      }
+    } catch (err) {
+      console.warn('API local ao excluir cliente:', err);
     }
+    return await firebaseService.clients.delete(id);
   },
 
   // QUOTES (Local SQLite API + Firestore mirror)
@@ -751,18 +803,18 @@ export const api = {
       console.warn('API local ao criar orçamento:', err);
     }
 
-    try {
+    if (apiResult) {
+      // Sincroniza em background no Firestore sem travar o salvamento ou a interface
       const payloadToFirebase = {
         ...quoteData,
-        id: apiResult?.id || quoteData.id,
-        quote_number: apiResult?.quote_number || quoteData.quote_number
+        id: apiResult.id || quoteData.id,
+        quote_number: apiResult.quote_number || quoteData.quote_number
       };
-      await firebaseService.quotes.create(payloadToFirebase);
-    } catch (err) {
-      console.warn('Firestore ao sincronizar orçamento:', err);
+      firebaseService.quotes.create(payloadToFirebase).catch((err) => {
+        console.warn('Firestore em background ao sincronizar orçamento:', err);
+      });
+      return apiResult;
     }
-
-    if (apiResult) return apiResult;
 
     // Fallback if backend was unreachable
     const created = await firebaseService.quotes.create(quoteData);
@@ -789,13 +841,16 @@ export const api = {
       console.warn('API local ao atualizar orçamento:', err);
     }
 
-    try {
-      await firebaseService.quotes.update(id, quoteData);
-    } catch (err) {
-      console.warn('Firestore ao sincronizar atualização de orçamento:', err);
+    if (apiResult) {
+      // Sincroniza em background no Firestore sem travar a interface
+      firebaseService.quotes.update(id, quoteData).catch((err) => {
+        console.warn('Firestore em background ao sincronizar atualização de orçamento:', err);
+      });
+      return apiResult;
     }
 
-    if (apiResult) return apiResult;
+    // Fallback if backend was unreachable
+    await firebaseService.quotes.update(id, quoteData);
     return { success: true, total: quoteData.total || 0, message: 'Orçamento atualizado com sucesso!' };
   },
 
@@ -898,18 +953,18 @@ export const api = {
       console.warn('API local ao criar ordem de serviço:', err);
     }
 
-    try {
+    if (apiResult) {
+      // Sincroniza em background no Firestore sem travar o app
       const payloadToFirebase = {
         ...orderData,
-        id: apiResult?.id || orderData.id,
-        order_number: apiResult?.order_number || orderData.order_number
+        id: apiResult.id || orderData.id,
+        order_number: apiResult.order_number || orderData.order_number
       };
-      await firebaseService.workOrders.create(payloadToFirebase);
-    } catch (err) {
-      console.warn('Firestore ao sincronizar ordem de serviço:', err);
+      firebaseService.workOrders.create(payloadToFirebase).catch((err) => {
+        console.warn('Firestore em background ao sincronizar ordem de serviço:', err);
+      });
+      return apiResult;
     }
-
-    if (apiResult) return apiResult;
 
     const created = await firebaseService.workOrders.create(orderData);
     return {
@@ -935,13 +990,14 @@ export const api = {
       console.warn('API local ao atualizar ordem de serviço:', err);
     }
 
-    try {
-      await firebaseService.workOrders.update(id, orderData);
-    } catch (err) {
-      console.warn('Firestore ao sincronizar atualização de ordem de serviço:', err);
+    if (apiResult) {
+      // Sincroniza em background no Firestore sem travar o app
+      firebaseService.workOrders.update(id, orderData).catch((err) => {
+        console.warn('Firestore em background ao sincronizar atualização de ordem de serviço:', err);
+      });
+      return apiResult;
     }
 
-    if (apiResult) return apiResult;
     return { success: true, total: orderData.total || 0, message: 'Ordem de serviço atualizada com sucesso!' };
   },
 

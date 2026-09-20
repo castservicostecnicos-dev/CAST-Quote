@@ -12,13 +12,18 @@ import {
   FileText,
   AlertTriangle,
   CheckCircle2,
-  PenTool
+  PenTool,
+  UserPlus,
+  Copy,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Quote, Client, Technician, ItemRow, PhotoRecord } from '../types';
 import { VerticalCameraModal } from './VerticalCameraModal';
 import { SignatureModal } from './SignatureModal';
+import { QuickClientModal } from './QuickClientModal';
+import { COMMON_ITEM_SUGGESTIONS } from '../data/itemSuggestions';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -40,6 +45,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraModalMode, setCameraModalMode] = useState<'camera' | 'file'>('file');
+  const [isQuickClientOpen, setIsQuickClientOpen] = useState(false);
 
   // Form State
   const [clientId, setClientId] = useState('');
@@ -175,6 +181,32 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     setItems(updated);
   };
 
+  const handleItemDescriptionChange = (index: number, val: string) => {
+    const updated = [...items];
+    const match = COMMON_ITEM_SUGGESTIONS.find(
+      (s) => s.description.toLowerCase() === val.trim().toLowerCase()
+    );
+    if (match) {
+      const currentPrice = Number(updated[index].unit_price) || 0;
+      const unitPrice = match.default_price && currentPrice === 0 ? match.default_price : currentPrice;
+      const qty = Number(updated[index].quantity) || 1;
+      updated[index] = {
+        ...updated[index],
+        description: match.description,
+        item_type: match.item_type,
+        unit: match.unit || updated[index].unit || 'UN',
+        unit_price: unitPrice,
+        total_price: Number((qty * unitPrice).toFixed(2))
+      };
+    } else {
+      updated[index] = {
+        ...updated[index],
+        description: val
+      };
+    }
+    setItems(updated);
+  };
+
   const addItem = () => {
     setItems([
       ...items,
@@ -187,6 +219,41 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         total_price: 0
       }
     ]);
+  };
+
+  const addServiceItem = () => {
+    setItems([
+      ...items,
+      {
+        item_type: 'servico',
+        description: '',
+        quantity: 1,
+        unit: 'UN',
+        unit_price: 0,
+        total_price: 0
+      }
+    ]);
+  };
+
+  const addMaterialItem = () => {
+    setItems([
+      ...items,
+      {
+        item_type: 'material',
+        description: '',
+        quantity: 1,
+        unit: 'UN',
+        unit_price: 0,
+        total_price: 0
+      }
+    ]);
+  };
+
+  const duplicateItem = (index: number) => {
+    const itemToDup = items[index];
+    const updated = [...items];
+    updated.splice(index + 1, 0, { ...itemToDup });
+    setItems(updated);
   };
 
   const removeItem = (index: number) => {
@@ -296,7 +363,18 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
             {/* Step 1: Base Information */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Cliente *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">Cliente *</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickClientOpen(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition cursor-pointer"
+                    title="Cadastrar novo cliente rapidamente sem sair do orçamento"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Novo</span>
+                  </button>
+                </div>
                 <select
                   required
                   value={clientId}
@@ -366,22 +444,42 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
             {/* Step 2: Items Table with Real-Time Auto Calculation */}
             <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-blue-600" />
                     Itens e Serviços (Cálculo Automático)
                   </h3>
-                  <p className="text-[11px] text-slate-500">Adicione materiais e mão de obra</p>
+                  <p className="text-[11px] text-slate-500">Adicione materiais e mão de obra com autocompletar</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Adicionar Item</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={addServiceItem}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition cursor-pointer"
+                    title="Adicionar linha de serviço rapidamente"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Serviço</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addMaterialItem}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold border border-emerald-200 transition cursor-pointer"
+                    title="Adicionar linha de material rapidamente"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Material</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Item</span>
+                  </button>
+                </div>
               </div>
 
               {/* Desktop / Tablet Horizontal: Linha única por item com campos amplos e boa visualização */}
@@ -395,7 +493,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                       <th className="py-2.5 px-2 w-20">Un</th>
                       <th className="py-2.5 px-2 w-32">Valor Unit. (R$)</th>
                       <th className="py-2.5 px-2 w-32 text-right">Total</th>
-                      <th className="py-2.5 px-1 w-10 text-center"></th>
+                      <th className="py-2.5 px-1 w-20 text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/70">
@@ -416,9 +514,10 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                           <input
                             type="text"
                             required
+                            list="quote-item-datalist"
                             value={item.description}
-                            onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                            placeholder="Descrição detalhada do item ou serviço..."
+                            onChange={(e) => handleItemDescriptionChange(index, e.target.value)}
+                            placeholder="Digite ou escolha uma sugestão..."
                             className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </td>
@@ -461,16 +560,26 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         </td>
 
                         <td className="py-2 px-1 align-middle text-center">
-                          {items.length > 1 && (
+                          <div className="flex items-center justify-center gap-1">
                             <button
                               type="button"
-                              onClick={() => removeItem(index)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                              title="Remover linha"
+                              onClick={() => duplicateItem(index)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                              title="Duplicar linha"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Copy className="w-4 h-4" />
                             </button>
-                          )}
+                            {items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeItem(index)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                                title="Remover linha"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -496,11 +605,19 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span className="text-[11px] text-slate-500 font-medium">Subtotal:</span>
                         <span className="text-xs font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
                           {formatBrl(item.total_price)}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => duplicateItem(index)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Duplicar item"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
                         {items.length > 1 && (
                           <button
                             type="button"
@@ -536,13 +653,14 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         <label className="block text-[11px] font-bold text-slate-600 mb-1">
                           Descrição do Item / Serviço
                         </label>
-                        <textarea
-                          rows={2}
+                        <input
+                          type="text"
                           required
+                          list="quote-item-datalist"
                           value={item.description}
-                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                          placeholder="Descreva detalhadamente o que está sendo orçado..."
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition resize-none"
+                          onChange={(e) => handleItemDescriptionChange(index, e.target.value)}
+                          placeholder="Descreva detalhadamente ou selecione uma sugestão..."
+                          className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                         />
                       </div>
 
@@ -897,6 +1015,25 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         onConfirm={(sigData) => {
           setClientSignature(sigData);
           setClientSignedAt(new Date().toISOString());
+        }}
+      />
+      {/* Datalist for fast item and service suggestions */}
+      <datalist id="quote-item-datalist">
+        {COMMON_ITEM_SUGGESTIONS.map((sug, i) => (
+          <option key={i} value={sug.description}>
+            {sug.item_type === 'servico' ? '🛠️' : '📦'} {sug.category} • {sug.unit} • {sug.default_price ? `R$ ${sug.default_price}` : ''}
+          </option>
+        ))}
+      </datalist>
+
+      {/* Quick Client Modal for instant inline client registration */}
+      <QuickClientModal
+        isOpen={isQuickClientOpen}
+        companyId={activeCompany?.id || quoteToEdit?.company_id || 'comp-cast'}
+        onClose={() => setIsQuickClientOpen(false)}
+        onClientCreated={(newClient) => {
+          setClients((prev) => [newClient, ...prev.filter((c) => c.id !== newClient.id)]);
+          setClientId(newClient.id);
         }}
       />
     </>

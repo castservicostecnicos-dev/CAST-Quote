@@ -132,6 +132,10 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         setErrorMessage(
           'A janela pop-up foi bloqueada pelo navegador. Permita pop-ups para esta página ou abra o sistema em uma nova aba.'
         );
+      } else if (err.code === 'auth/access-denied' || err.message?.includes('403') || err.message?.includes('access_denied')) {
+        setErrorMessage(
+          'Acesso bloqueado pelo Google (Erro 403): O projeto no Google Cloud está em modo de teste. Para autorizar cast.servicostecnicos@gmail.com, adicione-a em "Usuários de teste" no console do Google Cloud ou conecte diretamente com a conta criadora (clientesiptv.2468@gmail.com).'
+        );
       } else {
         console.error('Google Sign-in failed:', err);
         setErrorMessage(err.message || 'Falha ao autenticar com o Google Drive.');
@@ -266,11 +270,29 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
 
         <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           {errorMessage && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-none" />
-              <div className="flex-1">
-                <span>{errorMessage}</span>
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-none mt-0.5" />
+                <div className="flex-1 leading-relaxed">
+                  <span>{errorMessage}</span>
+                </div>
               </div>
+              {errorMessage.includes('403') && (
+                <div className="mt-1 pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-2 text-[11px]">
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials/consent?project=gen-lang-client-0996223131"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold shadow-2xs transition"
+                  >
+                    <span>Abrir Tela de Consentimento no Google Cloud</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <span className="text-amber-800">
+                    💡 Dica: No console do Google Cloud, role até <strong>Usuários de teste</strong> &gt; <strong>+ ADD USERS</strong> e adicione <code>cast.servicostecnicos@gmail.com</code> (faça isso logado com <code>clientesiptv.2468@gmail.com</code>).
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

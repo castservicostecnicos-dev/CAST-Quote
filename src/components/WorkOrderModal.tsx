@@ -4,6 +4,7 @@ import {
   Plus,
   Trash2,
   Camera,
+  Upload,
   DollarSign,
   Wrench,
   AlertTriangle,
@@ -38,6 +39,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraModalMode, setCameraModalMode] = useState<'camera' | 'file'>('file');
 
   // Signature States
   const [clientSignature, setClientSignature] = useState<string | undefined>(undefined);
@@ -662,19 +664,59 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsCameraOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition active:scale-95"
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                  <span>Capturar Foto Vertical</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraModalMode('file');
+                      setIsCameraOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Carregar Arquivo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraModalMode('camera');
+                      setIsCameraOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition active:scale-95"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Câmera</span>
+                  </button>
+                </div>
               </div>
 
               {photos.length === 0 ? (
-                <div className="p-6 text-center border border-dashed border-slate-300 rounded-xl bg-white text-slate-400 text-xs">
-                  Nenhuma foto anexada. Use a câmera vertical para registrar o antes/depois da execução.
+                <div className="p-6 text-center border border-dashed border-slate-300 rounded-xl bg-white text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+                  <p>Nenhuma foto anexada. Use a câmera ou carregue fotos da galeria para registrar o serviço.</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraModalMode('file');
+                        setIsCameraOpen(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-medium flex items-center gap-1 transition"
+                    >
+                      <Upload className="w-3 h-3" />
+                      Escolher foto do dispositivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraModalMode('camera');
+                        setIsCameraOpen(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-medium flex items-center gap-1 transition"
+                    >
+                      <Camera className="w-3 h-3" />
+                      Abrir câmera
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -848,6 +890,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
       <VerticalCameraModal
         companyId={activeCompany?.id || 'comp-1'}
         isOpen={isCameraOpen}
+        initialMode={cameraModalMode}
         onClose={() => setIsCameraOpen(false)}
         onPhotoAdded={(newPhoto) => {
           setPhotos((prev) => [...prev, newPhoto]);

@@ -737,45 +737,66 @@ export const api = {
   },
 
   createQuote: async (quoteData: any): Promise<{ id: string; quote_number: number; total: number; message: string }> => {
+    let apiResult: any = null;
     try {
-      const created = await firebaseService.quotes.create(quoteData);
-      return {
-        id: created.id,
-        quote_number: created.quote_number,
-        total: created.total,
-        message: 'Orçamento gerado e salvo no Firestore com sucesso!'
-      };
-    } catch (err) {
-      console.warn('Fallback para API ao criar orçamento:', err);
       const res = await fetch(`${BASE_URL}/quotes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao salvar orçamento');
-      return data;
+      if (res.ok) {
+        apiResult = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao criar orçamento:', err);
     }
+
+    try {
+      const payloadToFirebase = {
+        ...quoteData,
+        id: apiResult?.id || quoteData.id,
+        quote_number: apiResult?.quote_number || quoteData.quote_number
+      };
+      await firebaseService.quotes.create(payloadToFirebase);
+    } catch (err) {
+      console.warn('Firestore ao sincronizar orçamento:', err);
+    }
+
+    if (apiResult) return apiResult;
+
+    // Fallback if backend was unreachable
+    const created = await firebaseService.quotes.create(quoteData);
+    return {
+      id: created.id,
+      quote_number: created.quote_number,
+      total: created.total,
+      message: 'Orçamento salvo com sucesso!'
+    };
   },
 
   updateQuote: async (id: string, quoteData: any): Promise<{ success: boolean; total: number; message: string }> => {
+    let apiResult: any = null;
     try {
-      const updated = await firebaseService.quotes.update(id, quoteData);
-      return {
-        success: true,
-        total: updated.total,
-        message: 'Orçamento atualizado no Firestore com sucesso!'
-      };
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/quotes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao salvar alterações no orçamento');
-      return data;
+      if (res.ok) {
+        apiResult = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao atualizar orçamento:', err);
     }
+
+    try {
+      await firebaseService.quotes.update(id, quoteData);
+    } catch (err) {
+      console.warn('Firestore ao sincronizar atualização de orçamento:', err);
+    }
+
+    if (apiResult) return apiResult;
+    return { success: true, total: quoteData.total || 0, message: 'Orçamento atualizado com sucesso!' };
   },
 
   duplicateQuote: async (id: string): Promise<{ id: string; quote_number: number; message: string }> => {
@@ -863,44 +884,65 @@ export const api = {
   },
 
   createWorkOrder: async (orderData: any): Promise<{ id: string; order_number: number; total: number; message: string }> => {
+    let apiResult: any = null;
     try {
-      const created = await firebaseService.workOrders.create(orderData);
-      return {
-        id: created.id,
-        order_number: created.order_number,
-        total: created.total,
-        message: 'Ordem de serviço salva no Firestore com sucesso!'
-      };
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/work-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao criar ordem de serviço');
-      return data;
+      if (res.ok) {
+        apiResult = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao criar ordem de serviço:', err);
     }
+
+    try {
+      const payloadToFirebase = {
+        ...orderData,
+        id: apiResult?.id || orderData.id,
+        order_number: apiResult?.order_number || orderData.order_number
+      };
+      await firebaseService.workOrders.create(payloadToFirebase);
+    } catch (err) {
+      console.warn('Firestore ao sincronizar ordem de serviço:', err);
+    }
+
+    if (apiResult) return apiResult;
+
+    const created = await firebaseService.workOrders.create(orderData);
+    return {
+      id: created.id,
+      order_number: created.order_number,
+      total: created.total,
+      message: 'Ordem de serviço salva com sucesso!'
+    };
   },
 
   updateWorkOrder: async (id: string, orderData: any): Promise<{ success: boolean; total: number; message: string }> => {
+    let apiResult: any = null;
     try {
-      const updated = await firebaseService.workOrders.update(id, orderData);
-      return {
-        success: true,
-        total: updated.total,
-        message: 'Ordem de serviço atualizada no Firestore com sucesso!'
-      };
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/work-orders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao atualizar ordem de serviço');
-      return data;
+      if (res.ok) {
+        apiResult = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao atualizar ordem de serviço:', err);
     }
+
+    try {
+      await firebaseService.workOrders.update(id, orderData);
+    } catch (err) {
+      console.warn('Firestore ao sincronizar atualização de ordem de serviço:', err);
+    }
+
+    if (apiResult) return apiResult;
+    return { success: true, total: orderData.total || 0, message: 'Ordem de serviço atualizada com sucesso!' };
   },
 
   saveWorkOrderSignature: async (
@@ -1060,26 +1102,47 @@ export const api = {
     company_id: string;
     caption?: string;
   }): Promise<{ success: boolean; url: string; width: number; height: number; caption?: string }> => {
+    // 1. Try local server endpoint first to persist file to disk
     try {
-      const path = `photos/${payload.company_id || 'general'}/${Date.now()}`;
-      const url = await firebaseService.media.uploadBase64(payload.image, path);
-      return {
-        success: true,
-        url,
-        width: payload.width,
-        height: payload.height,
-        caption: payload.caption
-      };
-    } catch (err) {
       const res = await fetch(`${BASE_URL}/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao enviar foto');
-      return data;
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+      console.warn('API /upload response not ok:', res.status);
+    } catch (err) {
+      console.warn('Servidor local /upload falhou, tentando Firebase:', err);
     }
+
+    // 2. Try Firebase Storage if server upload is unreachable
+    try {
+      const path = `photos/${payload.company_id || 'general'}/${Date.now()}`;
+      const url = await firebaseService.media.uploadBase64(payload.image, path);
+      if (url && !url.startsWith('data:')) {
+        return {
+          success: true,
+          url,
+          width: payload.width,
+          height: payload.height,
+          caption: payload.caption
+        };
+      }
+    } catch (err) {
+      console.warn('Firebase Storage upload failed:', err);
+    }
+
+    // 3. Fallback to image data
+    return {
+      success: true,
+      url: payload.image,
+      width: payload.width,
+      height: payload.height,
+      caption: payload.caption
+    };
   },
 
   // DASHBOARD

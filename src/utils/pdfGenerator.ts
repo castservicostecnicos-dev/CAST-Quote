@@ -7,9 +7,46 @@ export interface DocumentPdfOptions {
   type: 'ORÇAMENTO' | 'ORDEM DE SERVIÇO';
   data: Quote | WorkOrder;
   company?: Company | null;
+  imageMap?: Map<string, string>;
 }
 
-export function generateDocumentPdf({ type, data, company }: DocumentPdfOptions): jsPDF {
+export async function preloadPhotosAsDataUrls(photos: Array<{ url: string }>): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!photos || photos.length === 0) return map;
+
+  await Promise.all(
+    photos.map(async (p) => {
+      if (!p.url) return;
+      if (p.url.startsWith('data:')) {
+        map.set(p.url, p.url);
+        return;
+      }
+      try {
+        const res = await fetch(p.url);
+        if (res.ok) {
+          const blob = await res.blob();
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+          map.set(p.url, dataUrl);
+        }
+      } catch (err) {
+        console.warn('Could not preload image for PDF:', p.url, err);
+      }
+    })
+  );
+  return map;
+}
+
+export async function generateDocumentPdfAsync(options: DocumentPdfOptions): Promise<jsPDF> {
+  const photos = options.data.photos || [];
+  const imageMap = await preloadPhotosAsDataUrls(photos);
+  return generateDocumentPdf({ ...options, imageMap });
+}
+
+export function generateDocumentPdf({ type, data, company, imageMap }: DocumentPdfOptions): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -332,9 +369,10 @@ export function generateDocumentPdf({ type, data, company }: DocumentPdfOptions)
 
       const photo = photos[i];
       if (photo && photo.url) {
+        const imageSrc = imageMap?.get(photo.url) || photo.url;
         try {
           // If it is an image data URL or direct image, add to PDF
-          doc.addImage(photo.url, 'JPEG', photoX + 0.5, photoY + 0.5, photoWidth - 1, photoHeight - 1, undefined, 'FAST');
+          doc.addImage(imageSrc, 'JPEG', photoX + 0.5, photoY + 0.5, photoWidth - 1, photoHeight - 1, undefined, 'FAST');
         } catch (imgErr) {
           // Fallback portrait representation if format conversion fails
           doc.setFont('helvetica', 'normal');

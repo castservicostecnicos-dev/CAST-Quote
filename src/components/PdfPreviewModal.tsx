@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, FileSpreadsheet, Share2, Cloud, X, Printer } from 'lucide-react';
 import { Quote, WorkOrder, Company } from '../types';
-import { generateDocumentPdf } from '../utils/pdfGenerator';
+import { generateDocumentPdf, generateDocumentPdfAsync } from '../utils/pdfGenerator';
 import { exportSingleDocumentToExcel } from '../utils/excelExporter';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,17 +28,31 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   const [pdfDataUri, setPdfDataUri] = useState<string | null>(null);
 
   useEffect(() => {
+    let isCurrent = true;
     if (isOpen && data) {
-      try {
-        const doc = generateDocumentPdf({ type, data, company });
-        const uri = doc.output('datauristring');
-        setPdfDataUri(uri);
-      } catch (err) {
-        console.error('Failed to generate PDF preview:', err);
-      }
+      generateDocumentPdfAsync({ type, data, company })
+        .then((doc) => {
+          if (isCurrent) {
+            setPdfDataUri(doc.output('datauristring'));
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to generate PDF preview asynchronously:', err);
+          if (isCurrent) {
+            try {
+              const fallbackDoc = generateDocumentPdf({ type, data, company });
+              setPdfDataUri(fallbackDoc.output('datauristring'));
+            } catch (fallbackErr) {
+              console.error('Fallback PDF generation also failed:', fallbackErr);
+            }
+          }
+        });
     } else {
       setPdfDataUri(null);
     }
+    return () => {
+      isCurrent = false;
+    };
   }, [isOpen, data, type, company]);
 
   if (!isOpen || !data) return null;
@@ -47,15 +61,26 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   const docNumber = isQuote ? (data as Quote).quote_number : (data as WorkOrder).order_number;
   const filename = `CAST_${type.replace(/\s+/g, '_')}_${docNumber}.pdf`;
 
-  const handleDownloadPdf = () => {
-    const doc = generateDocumentPdf({ type, data, company });
-    doc.save(filename);
+  const handleDownloadPdf = async () => {
+    try {
+      const doc = await generateDocumentPdfAsync({ type, data, company });
+      doc.save(filename);
+    } catch {
+      const doc = generateDocumentPdf({ type, data, company });
+      doc.save(filename);
+    }
   };
 
-  const handlePrint = () => {
-    const doc = generateDocumentPdf({ type, data, company });
-    doc.autoPrint();
-    window.open(doc.output('bloburl'), '_blank');
+  const handlePrint = async () => {
+    try {
+      const doc = await generateDocumentPdfAsync({ type, data, company });
+      doc.autoPrint();
+      window.open(doc.output('bloburl'), '_blank');
+    } catch {
+      const doc = generateDocumentPdf({ type, data, company });
+      doc.autoPrint();
+      window.open(doc.output('bloburl'), '_blank');
+    }
   };
 
   const handleExcelExport = () => {

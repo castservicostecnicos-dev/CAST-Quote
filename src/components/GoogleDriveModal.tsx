@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Quote, WorkOrder, Company } from '../types';
 import { api } from '../services/api';
-import { generateDocumentPdf } from '../utils/pdfGenerator';
+import { generateDocumentPdf, generateDocumentPdfAsync } from '../utils/pdfGenerator';
 import {
   initAuth,
   googleSignIn,
@@ -189,7 +189,12 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         total: 100
       });
 
-      const doc = generateDocumentPdf({ type, data, company });
+      let doc;
+      try {
+        doc = await generateDocumentPdfAsync({ type, data, company });
+      } catch {
+        doc = generateDocumentPdf({ type, data, company });
+      }
       const pdfBlob = doc.output('blob');
 
       // 3. Upload Tree, PDF and Individual Photos with Unique Codes

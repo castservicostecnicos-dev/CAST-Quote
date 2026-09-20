@@ -1558,12 +1558,12 @@ async function startServer() {
       const imgWidth = Number(width);
       const imgHeight = Number(height);
 
-      // STRICT VERTICAL ORIENTATION VALIDATION RULE
-      // width must be strictly less than height
-      if (imgWidth && imgHeight && imgWidth >= imgHeight) {
-        return res.status(400).json({
-          error: `FOTO REJEITADA: A imagem está em orientação HORIZONTAL (${imgWidth}x${imgHeight}px). O padrão CAST Quote OBRIGA que todas as fotos sejam estritamente VERTICAIS (Retrato). Por favor, posicione o dispositivo na vertical e capture novamente.`
-        });
+      let finalWidth = imgWidth || 600;
+      let finalHeight = imgHeight || 900;
+      // If dimensions are horizontal, adjust default display box to portrait
+      if (finalWidth >= finalHeight) {
+        finalWidth = Math.min(finalWidth, 600);
+        finalHeight = Math.max(finalHeight, 900);
       }
 
       // Check base64 format
@@ -1610,8 +1610,8 @@ async function startServer() {
       return res.status(201).json({
         success: true,
         url: publicUrl,
-        width: imgWidth || 600,
-        height: imgHeight || 900,
+        width: finalWidth,
+        height: finalHeight,
         caption: caption || ''
       });
     } catch (err: any) {

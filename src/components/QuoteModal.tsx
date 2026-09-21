@@ -209,7 +209,6 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const addItem = () => {
     setItems([
-      ...items,
       {
         item_type: 'material',
         description: '',
@@ -217,13 +216,13 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         unit: 'UN',
         unit_price: 0,
         total_price: 0
-      }
+      },
+      ...items
     ]);
   };
 
   const addServiceItem = () => {
     setItems([
-      ...items,
       {
         item_type: 'servico',
         description: '',
@@ -231,13 +230,13 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         unit: 'UN',
         unit_price: 0,
         total_price: 0
-      }
+      },
+      ...items
     ]);
   };
 
   const addMaterialItem = () => {
     setItems([
-      ...items,
       {
         item_type: 'material',
         description: '',
@@ -245,15 +244,14 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         unit: 'UN',
         unit_price: 0,
         total_price: 0
-      }
+      },
+      ...items
     ]);
   };
 
   const duplicateItem = (index: number) => {
     const itemToDup = items[index];
-    const updated = [...items];
-    updated.splice(index + 1, 0, { ...itemToDup });
-    setItems(updated);
+    setItems([{ ...itemToDup }, ...items]);
   };
 
   const removeItem = (index: number) => {
@@ -455,26 +453,30 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
+                    id="btn-quote-add-service"
                     onClick={addServiceItem}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition cursor-pointer"
-                    title="Adicionar linha de serviço rapidamente"
+                    title="Adicionar linha de serviço rapidamente no topo"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Serviço</span>
                   </button>
                   <button
                     type="button"
+                    id="btn-quote-add-material"
                     onClick={addMaterialItem}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold border border-emerald-200 transition cursor-pointer"
-                    title="Adicionar linha de material rapidamente"
+                    title="Adicionar linha de material rapidamente no topo"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Material</span>
                   </button>
                   <button
                     type="button"
+                    id="btn-quote-add-item"
                     onClick={addItem}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                    title="Adicionar novo item no topo"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Item</span>

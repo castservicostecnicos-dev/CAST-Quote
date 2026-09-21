@@ -73,7 +73,11 @@ export const ClientsList: React.FC = () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const targetCompanyId = activeCompany?.id || selectedCompanyId || companies[0]?.id || 'comp-cast';
+      const targetCompanyId =
+        activeCompany?.id ||
+        selectedCompanyId ||
+        (companies.length > 0 ? companies[0].id : '') ||
+        'comp-master-cast';
       const payload = {
         company_id: targetCompanyId,
         name: name.trim(),

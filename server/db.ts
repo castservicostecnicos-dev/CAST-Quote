@@ -357,6 +357,15 @@ function initSchema(db: Database) {
         [nowIso]
       );
     }
+
+    const existingCompCast = queryOne(`SELECT * FROM companies WHERE id = ?`, ['comp-cast']);
+    if (!existingCompCast) {
+      db.run(
+        `INSERT INTO companies (id, name, cnpj, email, phone, address, city, state, logo_url, primary_color, active, created_at)
+         VALUES ('comp-cast', 'CAST Serviços Técnicos', '12.345.678/0001-90', 'contato@castquote.com.br', '(11) 98765-4321', 'Av. Paulista, 1000 - Bela Vista', 'São Paulo', 'SP', '', '#2563eb', 1, ?)`,
+        [nowIso]
+      );
+    }
   } catch (err) {
     console.error('Error ensuring accounts and company defaults:', err);
   }

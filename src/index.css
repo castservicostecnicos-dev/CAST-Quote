@@ -114,3 +114,39 @@ html, body {
   vertical-align: top;
 }
 
+/* ==========================================================================
+   DIRETRIZ DE TIPOGRAFIA: CAIXA ALTA GLOBAL NO APP
+   - Todo o sistema (botões, menus, tabelas, textos, inputs) em MAIÚSCULAS
+   - E-mails OBRIGATÓRIOS em letras minúsculas
+   - Senhas mantêm maiúsculas e minúsculas como digitadas (ambas permitidas)
+   ========================================================================== */
+body, button, select, label, th, td, h1, h2, h3, h4, h5, h6, nav, header {
+  text-transform: uppercase;
+}
+
+/* Inputs de texto e áreas de texto padrão em maiúsculas */
+input:not([type="email"]):not([type="password"]):not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+textarea {
+  text-transform: uppercase;
+}
+
+/* E-MAILS OBRIGATORIAMENTE EM MINÚSCULAS */
+input[type="email"],
+.email-text,
+.lowercase-field,
+.user-email-display {
+  text-transform: lowercase !important;
+}
+
+/* SENHAS MANTÊM CAIXA MISTA (MAIÚSCULAS E MINÚSCULAS) */
+input[type="password"],
+.password-text,
+.mixed-case-field {
+  text-transform: none !important;
+}
+
+/* Ícones, SVGs e blocos técnicos */
+code, pre, kbd, samp, svg, svg * {
+  text-transform: none !important;
+}
+

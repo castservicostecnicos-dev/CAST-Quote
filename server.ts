@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { getDatabase, queryAll, queryOne, runSql } from './server/db.ts';
+import { getDatabase, queryAll, queryOne, runSql, saveDatabase } from './server/db.ts';
 
 async function startServer() {
   const app = express();
@@ -475,7 +475,7 @@ async function startServer() {
     try {
       const { companyId, userRole } = req.query;
       let technicians;
-      if (userRole === 'DEV' && !companyId) {
+      if (userRole === 'DEV' && (!companyId || companyId === 'all')) {
         technicians = queryAll(`
           SELECT t.*, c.name as company_name
           FROM technicians t
@@ -487,9 +487,9 @@ async function startServer() {
           SELECT t.*, c.name as company_name
           FROM technicians t
           LEFT JOIN companies c ON t.company_id = c.id
-          WHERE t.company_id = ?
+          WHERE (t.company_id = ? OR ? = '' OR t.company_id IS NULL)
           ORDER BY t.name ASC
-        `, [companyId || '']);
+        `, [companyId || '', companyId || '']);
       }
       return res.json(technicians);
     } catch (err: any) {
@@ -499,26 +499,35 @@ async function startServer() {
 
   app.post('/api/technicians', (req: Request, res: Response) => {
     try {
-      const { company_id, name, phone, email, role_title } = req.body;
+      const { company_id, name, phone, email, role_title, active } = req.body;
       if (!name || !name.trim()) {
         return res.status(400).json({ error: 'Nome do técnico é obrigatório.' });
       }
 
       let effectiveCompanyId = company_id;
-      if (!effectiveCompanyId) {
-        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
-        effectiveCompanyId = comp?.id || 'comp-cast';
+      // Validar se o company_id existe no SQLite, se não existir vincula à empresa padrão do sistema
+      const compExists = effectiveCompanyId ? queryOne(`SELECT id FROM companies WHERE id = ?`, [effectiveCompanyId]) : null;
+      if (!compExists) {
+        const defaultComp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
       }
 
-      const id = `tec-${Date.now()}`;
+      const id = req.body.id || `tec-${Date.now()}`;
       const now = new Date().toISOString();
+      const techActive = active !== undefined ? (Number(active) ? 1 : 0) : 1;
+
       runSql(
-        `INSERT INTO technicians (id, company_id, name, phone, email, role_title, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
-        [id, effectiveCompanyId, name.trim(), phone || '', email || '', role_title || 'Técnico Especialista', now]
+        `INSERT OR REPLACE INTO technicians (id, company_id, name, phone, email, role_title, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, effectiveCompanyId, name.trim(), phone || '', email || '', role_title || 'Técnico Especialista', techActive, now]
       );
 
-      const created = queryOne(`SELECT * FROM technicians WHERE id = ?`, [id]);
+      const created = queryOne(`
+        SELECT t.*, c.name as company_name
+        FROM technicians t
+        LEFT JOIN companies c ON t.company_id = c.id
+        WHERE t.id = ?
+      `, [id]);
       return res.status(201).json(created);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -528,14 +537,34 @@ async function startServer() {
   app.put('/api/technicians/:id', (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { name, phone, email, role_title, active } = req.body;
+      const { company_id, name, phone, email, role_title, active } = req.body;
+
+      let companyUpdateClause = '';
+      const params: any[] = [
+        name,
+        phone || '',
+        email || '',
+        role_title || 'Técnico Especialista',
+        active !== undefined ? (Number(active) ? 1 : 0) : 1
+      ];
+
+      if (company_id) {
+        companyUpdateClause = ', company_id = ?';
+        params.push(company_id);
+      }
+      params.push(id);
 
       runSql(
-        `UPDATE technicians SET name = ?, phone = ?, email = ?, role_title = ?, active = ? WHERE id = ?`,
-        [name, phone, email, role_title, active !== undefined ? active : 1, id]
+        `UPDATE technicians SET name = ?, phone = ?, email = ?, role_title = ?, active = ?${companyUpdateClause} WHERE id = ?`,
+        params
       );
 
-      const updated = queryOne(`SELECT * FROM technicians WHERE id = ?`, [id]);
+      const updated = queryOne(`
+        SELECT t.*, c.name as company_name
+        FROM technicians t
+        LEFT JOIN companies c ON t.company_id = c.id
+        WHERE t.id = ?
+      `, [id]);
       return res.json(updated);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -2081,6 +2110,263 @@ async function startServer() {
   // Health check
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({ status: 'ok', app: 'CAST Quote Backend', timestamp: new Date().toISOString() });
+  });
+
+  // ==========================================
+  // CLOUD PERSISTENCE & DATA RESTORATION SYNC
+  // Mantém os dados da nuvem persistidos no SQLite mesmo após novos deploys
+  // ==========================================
+  app.get('/api/sync/stats', (req: Request, res: Response) => {
+    try {
+      const qQuotes = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM quotes`)?.count || 0;
+      const qOrders = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM work_orders`)?.count || 0;
+      const qClients = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM clients`)?.count || 0;
+      const qTechs = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM technicians`)?.count || 0;
+      const qComps = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM companies`)?.count || 0;
+      const qUsers = queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM users`)?.count || 0;
+
+      return res.json({
+        quotes: qQuotes,
+        work_orders: qOrders,
+        clients: qClients,
+        technicians: qTechs,
+        companies: qComps,
+        users: qUsers,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/sync/restore', (req: Request, res: Response) => {
+    try {
+      const {
+        companies = [],
+        users = [],
+        clients = [],
+        technicians = [],
+        quotes = [],
+        work_orders = []
+      } = req.body;
+
+      const restoredCounts = {
+        companies: 0,
+        users: 0,
+        clients: 0,
+        technicians: 0,
+        quotes: 0,
+        work_orders: 0
+      };
+
+      // 1. Restaurar Empresas
+      for (const comp of companies) {
+        if (!comp.id || !comp.name) continue;
+        runSql(
+          `INSERT OR REPLACE INTO companies (id, name, cnpj, email, phone, address, city, state, logo_url, primary_color, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            comp.id,
+            comp.name,
+            comp.cnpj || '',
+            comp.email || '',
+            comp.phone || '',
+            comp.address || '',
+            comp.city || '',
+            comp.state || '',
+            comp.logo_url || '',
+            comp.primary_color || '#2563eb',
+            comp.active !== undefined ? (Number(comp.active) ? 1 : 0) : 1,
+            comp.created_at || new Date().toISOString()
+          ]
+        );
+        restoredCounts.companies++;
+      }
+
+      // 2. Restaurar Usuários
+      for (const usr of users) {
+        if (!usr.id || !usr.email) continue;
+        runSql(
+          `INSERT OR REPLACE INTO users (id, company_id, name, email, password, role, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            usr.id,
+            usr.company_id || null,
+            usr.name || 'Usuário',
+            usr.email,
+            usr.password || '123456',
+            usr.role || 'TÉCNICO',
+            usr.active !== undefined ? (Number(usr.active) ? 1 : 0) : 1,
+            usr.created_at || new Date().toISOString()
+          ]
+        );
+        restoredCounts.users++;
+      }
+
+      // 3. Restaurar Clientes
+      for (const cli of clients) {
+        if (!cli.id || !cli.name) continue;
+        runSql(
+          `INSERT OR REPLACE INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            cli.id,
+            cli.company_id || 'comp-master-cast',
+            cli.name,
+            cli.document || '',
+            cli.email || '',
+            cli.phone || '',
+            cli.address || '',
+            cli.city || '',
+            cli.state || '',
+            cli.notes || '',
+            cli.created_at || new Date().toISOString()
+          ]
+        );
+        restoredCounts.clients++;
+      }
+
+      // 4. Restaurar Técnicos
+      for (const tec of technicians) {
+        if (!tec.id || !tec.name) continue;
+        runSql(
+          `INSERT OR REPLACE INTO technicians (id, company_id, name, phone, email, role_title, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            tec.id,
+            tec.company_id || 'comp-master-cast',
+            tec.name,
+            tec.phone || '',
+            tec.email || '',
+            tec.role_title || 'Técnico Especialista',
+            tec.active !== undefined ? (Number(tec.active) ? 1 : 0) : 1,
+            tec.created_at || new Date().toISOString()
+          ]
+        );
+        restoredCounts.technicians++;
+      }
+
+      // 5. Restaurar Orçamentos e Itens
+      for (const q of quotes) {
+        if (!q.id) continue;
+        runSql(
+          `INSERT OR REPLACE INTO quotes (
+             id, company_id, client_id, technician_id, quote_number, date, validity_date,
+             status, description, address, notes, subtotal, discount, addition, total,
+             client_signature, client_signed_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            q.id,
+            q.company_id || 'comp-master-cast',
+            q.client_id || '',
+            q.technician_id || '',
+            q.quote_number || 1001,
+            q.date || new Date().toISOString().split('T')[0],
+            q.validity_date || '',
+            q.status || 'Rascunho',
+            q.description || '',
+            q.address || '',
+            q.notes || '',
+            q.subtotal || q.total || 0,
+            q.discount || 0,
+            q.addition || 0,
+            q.total || 0,
+            q.client_signature || null,
+            q.client_signed_at || null,
+            q.created_at || new Date().toISOString()
+          ]
+        );
+
+        if (Array.isArray(q.items) && q.items.length > 0) {
+          runSql(`DELETE FROM quote_items WHERE quote_id = ?`, [q.id]);
+          for (const it of q.items) {
+            const itemId = it.id || `qi-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            runSql(
+              `INSERT INTO quote_items (id, quote_id, item_type, description, quantity, unit, unit_price, total_price)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                itemId,
+                q.id,
+                it.item_type || 'servico',
+                it.description || '',
+                it.quantity || 1,
+                it.unit || 'UN',
+                it.unit_price || 0,
+                it.total_price || 0
+              ]
+            );
+          }
+        }
+        restoredCounts.quotes++;
+      }
+
+      // 6. Restaurar Ordens de Serviço e Itens
+      for (const o of work_orders) {
+        if (!o.id) continue;
+        runSql(
+          `INSERT OR REPLACE INTO work_orders (
+             id, company_id, client_id, technician_id, quote_id, order_number, date,
+             status, service_description, address, notes, subtotal, discount, addition, total,
+             client_signature, client_signed_at, technician_signature, technician_signed_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            o.id,
+            o.company_id || 'comp-master-cast',
+            o.client_id || '',
+            o.technician_id || '',
+            o.quote_id || null,
+            o.order_number || 1001,
+            o.date || new Date().toISOString().split('T')[0],
+            o.status || 'Aberta',
+            o.service_description || '',
+            o.address || '',
+            o.notes || '',
+            o.subtotal || o.total || 0,
+            o.discount || 0,
+            o.addition || 0,
+            o.total || 0,
+            o.client_signature || null,
+            o.client_signed_at || null,
+            o.technician_signature || null,
+            o.technician_signed_at || null,
+            o.created_at || new Date().toISOString()
+          ]
+        );
+
+        if (Array.isArray(o.items) && o.items.length > 0) {
+          runSql(`DELETE FROM work_order_items WHERE order_id = ?`, [o.id]);
+          for (const it of o.items) {
+            const itemId = it.id || `woi-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            runSql(
+              `INSERT INTO work_order_items (id, order_id, item_type, description, quantity, unit, unit_price, total_price)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                itemId,
+                o.id,
+                it.item_type || 'servico',
+                it.description || '',
+                it.quantity || 1,
+                it.unit || 'UN',
+                it.unit_price || 0,
+                it.total_price || 0
+              ]
+            );
+          }
+        }
+        restoredCounts.work_orders++;
+      }
+
+      saveDatabase();
+
+      return res.json({
+        success: true,
+        message: 'Banco de dados sincronizado e restaurado com persistência da nuvem!',
+        restoredCounts
+      });
+    } catch (err: any) {
+      console.error('Erro na sincronização de persistência:', err);
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   // ==========================================

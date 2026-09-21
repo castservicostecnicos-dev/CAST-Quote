@@ -562,28 +562,48 @@ export const api = {
     return await firebaseService.media.uploadCompanyLogo(companyId, fileOrBase64, filename);
   },
 
-  // TECHNICIANS (Local SQLite API + Firestore mirror)
+  // TECHNICIANS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getTechnicians: async (companyId?: string, userRole?: string): Promise<Technician[]> => {
+    let localTechs: Technician[] = [];
     try {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (userRole) params.append('userRole', userRole);
       const res = await fetch(`${BASE_URL}/technicians?${params.toString()}`);
       if (res.ok) {
-        const techs: Technician[] = await res.json();
-        if (techs && techs.length > 0) return techs;
+        const data = await res.json();
+        if (Array.isArray(data)) localTechs = data;
       }
     } catch (err) {
       console.warn('API local de técnicos indisponível, buscando no Firestore...');
     }
 
+    let firestoreTechs: Technician[] = [];
     try {
-      const techs = await firebaseService.technicians.getAll(companyId, userRole);
-      if (techs.length > 0) return techs;
+      firestoreTechs = await firebaseService.technicians.getAll(companyId, userRole);
     } catch (err) {
       console.warn('Fallback para Firestore falhou ao buscar técnicos:', err);
     }
-    return [];
+
+    // Se ambos vazios, retorna array vazio
+    if (localTechs.length === 0 && firestoreTechs.length === 0) return [];
+
+    // Mesclar por ID para garantir persistência pós-deploy
+    const map = new Map<string, Technician>();
+    firestoreTechs.forEach((t) => map.set(t.id, t));
+    localTechs.forEach((t) => map.set(t.id, t));
+    const merged = Array.from(map.values());
+
+    // Se o banco local SQLite foi reiniciado no deploy, restaura automaticamente
+    if (localTechs.length === 0 && firestoreTechs.length > 0) {
+      fetch(`${BASE_URL}/sync/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicians: firestoreTechs })
+      }).catch(() => {});
+    }
+
+    return merged;
   },
 
   createTechnician: async (technician: Partial<Technician>): Promise<Technician> => {
@@ -596,12 +616,16 @@ export const api = {
       });
       if (res.ok) {
         created = await res.json();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('Aviso API local técnicos:', errData);
       }
     } catch (err) {
       console.warn('API local ao cadastrar técnico:', err);
     }
 
     if (created) {
+      // Salva de forma assíncrona na nuvem Firestore para persistência definitiva entre deploys
       firebaseService.technicians.create({ ...technician, id: created.id }).catch((err) => {
         console.warn('Firestore ao sincronizar técnico:', err);
       });
@@ -609,7 +633,13 @@ export const api = {
     }
 
     // Fallback if local backend is down
-    return await firebaseService.technicians.create(technician);
+    const fbCreated = await firebaseService.technicians.create(technician);
+    fetch(`${BASE_URL}/sync/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ technicians: [fbCreated] })
+    }).catch(() => {});
+    return fbCreated;
   },
 
   updateTechnician: async (id: string, technician: Partial<Technician>): Promise<Technician> => {
@@ -634,7 +664,13 @@ export const api = {
       return updated;
     }
 
-    return await firebaseService.technicians.update(id, technician);
+    const fbUpdated = await firebaseService.technicians.update(id, technician);
+    fetch(`${BASE_URL}/sync/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ technicians: [fbUpdated] })
+    }).catch(() => {});
+    return fbUpdated;
   },
 
   deleteTechnician: async (id: string): Promise<{ success: boolean }> => {
@@ -652,28 +688,45 @@ export const api = {
     return await firebaseService.technicians.delete(id);
   },
 
-  // CLIENTS (Local SQLite API + Firestore mirror)
+  // CLIENTS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getClients: async (companyId?: string, userRole?: string): Promise<Client[]> => {
+    let localClients: Client[] = [];
     try {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (userRole) params.append('userRole', userRole);
       const res = await fetch(`${BASE_URL}/clients?${params.toString()}`);
       if (res.ok) {
-        const clients: Client[] = await res.json();
-        if (clients && clients.length > 0) return clients;
+        const data = await res.json();
+        if (Array.isArray(data)) localClients = data;
       }
     } catch (err) {
       console.warn('API local de clientes indisponível, buscando no Firestore...');
     }
 
+    let firestoreClients: Client[] = [];
     try {
-      const clients = await firebaseService.clients.getAll(companyId, userRole);
-      if (clients.length > 0) return clients;
+      firestoreClients = await firebaseService.clients.getAll(companyId, userRole);
     } catch (err) {
       console.warn('Fallback para Firestore falhou ao buscar clientes:', err);
     }
-    return [];
+
+    if (localClients.length === 0 && firestoreClients.length === 0) return [];
+
+    const map = new Map<string, Client>();
+    firestoreClients.forEach((c) => map.set(c.id, c));
+    localClients.forEach((c) => map.set(c.id, c));
+    const merged = Array.from(map.values());
+
+    if (localClients.length === 0 && firestoreClients.length > 0) {
+      fetch(`${BASE_URL}/sync/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clients: firestoreClients })
+      }).catch(() => {});
+    }
+
+    return merged;
   },
 
   createClient: async (client: Partial<Client>): Promise<Client> => {
@@ -699,7 +752,13 @@ export const api = {
     }
 
     // Fallback if local backend is down
-    return await firebaseService.clients.create(client);
+    const fbCreated = await firebaseService.clients.create(client);
+    fetch(`${BASE_URL}/sync/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clients: [fbCreated] })
+    }).catch(() => {});
+    return fbCreated;
   },
 
   updateClient: async (id: string, client: Partial<Client>): Promise<Client> => {
@@ -724,7 +783,13 @@ export const api = {
       return updated;
     }
 
-    return await firebaseService.clients.update(id, client);
+    const fbUpdated = await firebaseService.clients.update(id, client);
+    fetch(`${BASE_URL}/sync/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clients: [fbUpdated] })
+    }).catch(() => {});
+    return fbUpdated;
   },
 
   deleteClient: async (id: string): Promise<{ success: boolean }> => {
@@ -742,8 +807,9 @@ export const api = {
     return await firebaseService.clients.delete(id);
   },
 
-  // QUOTES (Local SQLite API + Firestore mirror)
+  // QUOTES (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getQuotes: async (filters: { companyId?: string; userRole?: string; status?: string; search?: string }): Promise<Quote[]> => {
+    let localQuotes: Quote[] = [];
     try {
       const params = new URLSearchParams();
       if (filters.companyId) params.append('companyId', filters.companyId);
@@ -752,20 +818,36 @@ export const api = {
       if (filters.search) params.append('search', filters.search);
       const res = await fetch(`${BASE_URL}/quotes?${params.toString()}`);
       if (res.ok) {
-        const quotes: Quote[] = await res.json();
-        return quotes || [];
+        const data = await res.json();
+        if (Array.isArray(data)) localQuotes = data;
       }
     } catch (err) {
       console.warn('API local de orçamentos indisponível, buscando no Firestore...');
     }
 
+    let firestoreQuotes: Quote[] = [];
     try {
-      const quotes = await firebaseService.quotes.getAll(filters);
-      if (quotes.length > 0) return quotes;
+      firestoreQuotes = await firebaseService.quotes.getAll(filters);
     } catch (err) {
       console.warn('Fallback para Firestore falhou ao buscar orçamentos:', err);
     }
-    return [];
+
+    if (localQuotes.length === 0 && firestoreQuotes.length === 0) return [];
+
+    const map = new Map<string, Quote>();
+    firestoreQuotes.forEach((q) => map.set(q.id, q));
+    localQuotes.forEach((q) => map.set(q.id, q));
+    const merged = Array.from(map.values());
+
+    if (localQuotes.length === 0 && firestoreQuotes.length > 0) {
+      fetch(`${BASE_URL}/sync/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quotes: firestoreQuotes })
+      }).catch(() => {});
+    }
+
+    return merged;
   },
 
   getQuote: async (id: string): Promise<Quote> => {
@@ -891,8 +973,9 @@ export const api = {
     }
   },
 
-  // WORK ORDERS (Local SQLite API + Firestore mirror)
+  // WORK ORDERS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getWorkOrders: async (filters: { companyId?: string; userRole?: string; status?: string; search?: string; technicianId?: string }): Promise<WorkOrder[]> => {
+    let localOrders: WorkOrder[] = [];
     try {
       const params = new URLSearchParams();
       if (filters.companyId) params.append('companyId', filters.companyId);
@@ -902,20 +985,36 @@ export const api = {
       if (filters.technicianId) params.append('technicianId', filters.technicianId);
       const res = await fetch(`${BASE_URL}/work-orders?${params.toString()}`);
       if (res.ok) {
-        const orders: WorkOrder[] = await res.json();
-        return orders || [];
+        const data = await res.json();
+        if (Array.isArray(data)) localOrders = data;
       }
     } catch (err) {
       console.warn('API local de OS indisponível, buscando no Firestore...');
     }
 
+    let firestoreOrders: WorkOrder[] = [];
     try {
-      const orders = await firebaseService.workOrders.getAll(filters);
-      if (orders.length > 0) return orders;
+      firestoreOrders = await firebaseService.workOrders.getAll(filters);
     } catch (err) {
       console.warn('Fallback para Firestore falhou ao buscar ordens de serviço:', err);
     }
-    return [];
+
+    if (localOrders.length === 0 && firestoreOrders.length === 0) return [];
+
+    const map = new Map<string, WorkOrder>();
+    firestoreOrders.forEach((o) => map.set(o.id, o));
+    localOrders.forEach((o) => map.set(o.id, o));
+    const merged = Array.from(map.values());
+
+    if (localOrders.length === 0 && firestoreOrders.length > 0) {
+      fetch(`${BASE_URL}/sync/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ work_orders: firestoreOrders })
+      }).catch(() => {});
+    }
+
+    return merged;
   },
 
   getWorkOrder: async (id: string): Promise<WorkOrder> => {
@@ -1468,5 +1567,70 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Falha ao desconectar conta do Drive');
     return data;
+  },
+
+  // SINCRONIZAÇÃO COMPLETA NUVEM (Firestore) -> SQLite LOCAL
+  // Chamada automaticamente ao carregar o aplicativo para garantir que nenhum dado seja perdido após deploy
+  syncCloudToLocal: async (): Promise<{ success: boolean; details?: any }> => {
+    try {
+      // 1. Verifica se SQLite está vazio ou recém-criado
+      const statsRes = await fetch(`${BASE_URL}/sync/stats`).catch(() => null);
+      let stats = { quotes: 0, work_orders: 0, clients: 0, technicians: 0, companies: 0, users: 0 };
+      if (statsRes && statsRes.ok) {
+        stats = await statsRes.json();
+      }
+
+      // Se todas as entidades locais já estiverem populadas, não há necessidade de reidratar
+      if (
+        stats.quotes > 0 &&
+        stats.work_orders > 0 &&
+        stats.clients > 0 &&
+        stats.technicians > 0
+      ) {
+        return { success: true, details: 'Banco local já populado' };
+      }
+
+      // 2. Busca dados salvos no Firestore
+      const [fbQuotes, fbOrders, fbClients, fbTechs, fbComps, fbUsers] = await Promise.all([
+        firebaseService.quotes.getAll({}).catch(() => []),
+        firebaseService.workOrders.getAll({}).catch(() => []),
+        firebaseService.clients.getAll().catch(() => []),
+        firebaseService.technicians.getAll().catch(() => []),
+        firebaseService.companies.getAll().catch(() => []),
+        firebaseService.users.getAll().catch(() => [])
+      ]);
+
+      if (
+        fbQuotes.length === 0 &&
+        fbOrders.length === 0 &&
+        fbClients.length === 0 &&
+        fbTechs.length === 0
+      ) {
+        return { success: true, details: 'Sem registros remotos para restaurar' };
+      }
+
+      // 3. Envia para o SQLite local para restaurar
+      const restoreRes = await fetch(`${BASE_URL}/sync/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companies: fbComps,
+          users: fbUsers,
+          clients: fbClients,
+          technicians: fbTechs,
+          quotes: fbQuotes,
+          work_orders: fbOrders
+        })
+      });
+
+      if (restoreRes.ok) {
+        const result = await restoreRes.json();
+        console.log('Sincronização Nuvem -> SQLite concluída:', result);
+        return { success: true, details: result };
+      }
+    } catch (err) {
+      console.warn('Erro ao sincronizar Firestore -> SQLite:', err);
+    }
+    return { success: false };
   }
 };

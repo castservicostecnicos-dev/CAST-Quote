@@ -59,15 +59,15 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Items State
+  // Items State - Inicia limpo aguardando preenchimento do usuário
   const [items, setItems] = useState<ItemRow[]>([
     {
       item_type: 'servico',
-      description: 'Mão de obra e execução técnica especializada',
+      description: '',
       quantity: 1,
       unit: 'UN',
-      unit_price: 1500,
-      total_price: 1500
+      unit_price: 0,
+      total_price: 0
     }
   ]);
 
@@ -148,7 +148,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     setDate(new Date().toISOString().split('T')[0]);
     setValidityDate(new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setStatus('Rascunho');
-    setDescription('Mão de obra e execução técnica especializada');
+    setDescription('');
     setAddress('');
     setNotes('Garantia de 12 meses nos equipamentos e 90 dias nos serviços.');
     setDiscount(0);
@@ -156,11 +156,11 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     setItems([
       {
         item_type: 'servico',
-        description: 'Mão de obra e execução técnica especializada',
+        description: '',
         quantity: 1,
         unit: 'UN',
-        unit_price: 1200,
-        total_price: 1200
+        unit_price: 0,
+        total_price: 0
       }
     ]);
     setPhotos([]);
@@ -287,7 +287,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
       const targetCompanyId = activeCompany?.id ||
         (user as any)?.company_id ||
         clients.find(c => c.id === clientId)?.company_id ||
-        'comp-cast';
+        'comp-master-cast';
 
       const effectiveDesc = (description && description.trim()) ||
         (items && items[0]?.description && items[0].description.trim()) ||
@@ -549,8 +549,9 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             min="0"
                             step="any"
                             required
-                            value={item.unit_price}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
+                            value={item.unit_price === 0 ? '' : item.unit_price}
+                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                            placeholder="0,00"
                             className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </td>
@@ -703,8 +704,9 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             min="0"
                             step="any"
                             required
-                            value={item.unit_price}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
+                            value={item.unit_price === 0 ? '' : item.unit_price}
+                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                            placeholder="0,00"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-right focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </div>

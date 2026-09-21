@@ -27,6 +27,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineIndicator } from './OfflineIndicator';
 import { BrandingSettingsModal } from './BrandingSettingsModal';
 import { BRAND_COLOR_PRESETS } from '../utils/brandTheme';
+import { api } from '../services/api';
 
 interface NavbarProps {
   currentTab: string;
@@ -63,6 +64,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showBrandingModal, setShowBrandingModal] = useState(false);
   const [colorSaveFeedback, setColorSaveFeedback] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const getRoleBadgeColor = (role?: string) => {
     switch (role) {
@@ -447,6 +450,35 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Configurar Google Drive</span>
                       </button>
                     )}
+
+                    {/* Sincronização & Persistência na Nuvem (Garante dados pós-deploy) */}
+                    <button
+                      type="button"
+                      id="btn-sync-cloud-database"
+                      onClick={async () => {
+                        setIsSyncing(true);
+                        setSyncFeedback(null);
+                        try {
+                          const res = await api.syncCloudToLocal();
+                          if (res.success) {
+                            setSyncFeedback('Dados Sincronizados com a Nuvem!');
+                          } else {
+                            setSyncFeedback('Banco Atualizado!');
+                          }
+                        } catch (e: any) {
+                          setSyncFeedback('Erro ao sincronizar');
+                        } finally {
+                          setIsSyncing(false);
+                          setTimeout(() => setSyncFeedback(null), 3000);
+                        }
+                      }}
+                      disabled={isSyncing}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl py-2 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold border border-emerald-200 transition shadow-2xs mt-1.5"
+                      title="Restaura e sincroniza dados da nuvem para o SQLite local"
+                    >
+                      <RotateCcw className={`w-4 h-4 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span className="truncate">{isSyncing ? 'Sincronizando Nuvem...' : (syncFeedback || 'Sincronizar Banco (Nuvem)')}</span>
+                    </button>
                   </div>
 
                   {/* Actions / Logout */}

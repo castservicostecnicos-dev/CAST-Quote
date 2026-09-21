@@ -61,22 +61,32 @@ export const TechniciansList: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name || !name.trim()) return;
     setSaving(true);
     try {
-      const targetCompanyId = activeCompany?.id || selectedCompanyId || companies[0]?.id || 'comp-cast';
+      const targetCompanyId =
+        activeCompany?.id ||
+        selectedCompanyId ||
+        (companies.length > 0 ? companies[0].id : '') ||
+        'comp-master-cast';
+
       const payload = {
         company_id: targetCompanyId,
-        name,
-        phone,
-        email,
-        role_title: roleTitle,
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        role_title: roleTitle.trim() || 'Técnico Especialista',
         active: active ? 1 : 0
       };
+
       if (techToEdit) {
-        await api.updateTechnician(techToEdit.id, payload);
+        const updated = await api.updateTechnician(techToEdit.id, payload);
+        setTechnicians((prev) =>
+          prev.map((t) => (t.id === techToEdit.id ? { ...t, ...payload, ...updated } : t))
+        );
       } else {
-        await api.createTechnician(payload);
+        const created = await api.createTechnician(payload);
+        setTechnicians((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
       }
       setModalOpen(false);
       loadTechnicians();
@@ -90,10 +100,12 @@ export const TechniciansList: React.FC = () => {
   const handleDelete = async (t: Technician) => {
     if (!confirm(`Deseja excluir o cadastro do técnico "${t.name}"?`)) return;
     try {
+      setTechnicians((prev) => prev.filter((item) => item.id !== t.id));
       await api.deleteTechnician(t.id);
       loadTechnicians();
     } catch (err: any) {
       alert('Erro ao excluir: ' + err.message);
+      loadTechnicians();
     }
   };
 

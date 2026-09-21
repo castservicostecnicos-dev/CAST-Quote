@@ -19,10 +19,20 @@ import { DemoReturnBanner } from './components/DemoReturnBanner';
 import { DemoDashboard } from './components/DemoDashboard';
 import { CommercialPresentationModal } from './components/CommercialPresentationModal';
 import { Quote, WorkOrder } from './types';
+import { api } from './services/api';
 
 function MainApp() {
   const { user, activeCompany, companies, isSupervisor } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
+
+  // Recupera e sincroniza automaticamente os dados da nuvem para o SQLite local após deploys
+  React.useEffect(() => {
+    if (user) {
+      api.syncCloudToLocal().catch((err) => {
+        console.warn('Auto cloud sync error:', err);
+      });
+    }
+  }, [user?.id]);
 
   // Enforce role-based tab restrictions strictly according to prompt
   const isDev = user?.role === 'DEV';

@@ -63,15 +63,15 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Items State
+  // Items State - Inicia limpo aguardando preenchimento do usuário
   const [items, setItems] = useState<ItemRow[]>([
     {
       item_type: 'servico',
-      description: 'Execução de serviços técnicos especializados em campo',
+      description: '',
       quantity: 1,
       unit: 'UN',
-      unit_price: 1800,
-      total_price: 1800
+      unit_price: 0,
+      total_price: 0
     }
   ]);
 
@@ -145,7 +145,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
     setTechnicianId(technicians[0]?.id || '');
     setDate(new Date().toISOString().split('T')[0]);
     setStatus('Aberta');
-    setServiceDescription('Execução de serviços técnicos especializados em campo');
+    setServiceDescription('');
     setAddress('');
     setNotes('Execução realizada de acordo com as normas técnicas de segurança.');
     setDiscount(0);
@@ -157,11 +157,11 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
     setItems([
       {
         item_type: 'servico',
-        description: 'Execução de serviços técnicos especializados em campo',
+        description: '',
         quantity: 1,
         unit: 'UN',
-        unit_price: 1800,
-        total_price: 1800
+        unit_price: 0,
+        total_price: 0
       }
     ]);
     setPhotos([]);
@@ -285,7 +285,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
       const targetCompanyId = activeCompany?.id ||
         (user as any)?.company_id ||
         clients.find(c => c.id === clientId)?.company_id ||
-        'comp-cast';
+        'comp-master-cast';
 
       const effectiveDesc = (serviceDescription && serviceDescription.trim()) ||
         (items && items[0]?.description && items[0].description.trim()) ||
@@ -550,8 +550,9 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                             min="0"
                             step="any"
                             required
-                            value={item.unit_price}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
+                            value={item.unit_price === 0 ? '' : item.unit_price}
+                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                            placeholder="0,00"
                             className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 text-right focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
                           />
                         </td>
@@ -704,8 +705,9 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                             min="0"
                             step="any"
                             required
-                            value={item.unit_price}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
+                            value={item.unit_price === 0 ? '' : item.unit_price}
+                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                            placeholder="0,00"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-right focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
                           />
                         </div>

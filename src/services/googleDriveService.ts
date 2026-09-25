@@ -290,10 +290,16 @@ export interface DriveClientTreeResult {
 }
 
 export interface DocumentSyncProgress {
-  stage: 'AUTH' | 'FOLDERS' | 'PDF' | 'PHOTOS' | 'COMPLETED';
+  stage: 'AUTH' | 'FOLDERS' | 'PDF' | 'PHOTOS' | 'SHARING' | 'COMPLETED';
   message: string;
   current: number;
   total: number;
+}
+
+export interface DriveShareInfo {
+  email: string;
+  status: 'SHARED' | 'FAILED' | 'SKIPPED';
+  message: string;
 }
 
 /**
@@ -521,6 +527,7 @@ export async function uploadDocumentAndAssetsToDrive(options: {
   tree: DriveClientTreeResult;
   pdf: DriveUploadResult;
   photos: DriveUploadedPhoto[];
+  shareInfo?: DriveShareInfo;
 }> {
   const token = await getAccessToken();
   if (!token) {
@@ -618,6 +625,35 @@ export async function uploadDocumentAndAssetsToDrive(options: {
     }
   }
 
+  // 4. Se o e-mail do cliente foi fornecido, compartilha a pasta do cliente automaticamente no Google Drive
+  let sharedClientEmail = options.data.client_email || options.data.email || '';
+  let shareStatus: 'SHARED' | 'FAILED' | 'SKIPPED' = 'SKIPPED';
+  let shareMessage = '';
+
+  if (sharedClientEmail && sharedClientEmail.includes('@')) {
+    options.onProgress?.({
+      stage: 'SHARING',
+      message: `Liberando acesso da pasta para o e-mail do cliente (${sharedClientEmail})...`,
+      current: 95,
+      total: 100
+    });
+
+    try {
+      const shareRes = await shareDriveFolderWithEmail({
+        folderId: tree.clientFolderId,
+        emailAddress: sharedClientEmail,
+        role: 'reader',
+        sendNotificationEmail: true
+      });
+      shareStatus = 'SHARED';
+      shareMessage = shareRes.message;
+    } catch (shareErr: any) {
+      console.warn('Aviso: Não foi possível liberar acesso automático para o cliente:', shareErr.message);
+      shareStatus = 'FAILED';
+      shareMessage = shareErr.message || 'Erro ao compartilhar com o e-mail do cliente';
+    }
+  }
+
   options.onProgress?.({
     stage: 'COMPLETED',
     message: 'Arquivos e fotos organizados com sucesso no Google Drive!',
@@ -628,6 +664,66 @@ export async function uploadDocumentAndAssetsToDrive(options: {
   return {
     tree,
     pdf: pdfResult,
-    photos: uploadedPhotos
+    photos: uploadedPhotos,
+    shareInfo: {
+      email: sharedClientEmail,
+      status: shareStatus,
+      message: shareMessage
+    }
+  };
+}
+
+/**
+ * Concede permissão de acesso (leitura ou escrita) à pasta do cliente no Google Drive
+ * para o e-mail informado (ex: cliente@gmail.com).
+ */
+export async function shareDriveFolderWithEmail(options: {
+  folderId: string;
+  emailAddress: string;
+  role?: 'reader' | 'commenter' | 'writer';
+  sendNotificationEmail?: boolean;
+}): Promise<{ success: boolean; permissionId?: string; message: string }> {
+  const token = await getAccessToken();
+  if (!token) {
+    throw new Error('Sessão expirada ou usuário não conectado ao Google Drive.');
+  }
+
+  const cleanEmail = options.emailAddress.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('E-mail do cliente inválido para liberação de acesso no Google Drive.');
+  }
+
+  const role = options.role || 'reader';
+  const sendEmail = options.sendNotificationEmail !== false;
+
+  const url = `https://www.googleapis.com/drive/v3/files/${options.folderId}/permissions?sendNotificationEmail=${sendEmail}&fields=id,emailAddress,role`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      role,
+      type: 'user',
+      emailAddress: cleanEmail
+    })
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const rawMsg = errData.error?.message || '';
+    if (rawMsg.includes('Invalid email') || rawMsg.includes('not found')) {
+      throw new Error(`O e-mail "${cleanEmail}" não é uma conta Google válida ou ativa.`);
+    }
+    throw new Error(rawMsg || 'Falha ao conceder acesso ao e-mail no Google Drive');
+  }
+
+  const data = await res.json();
+  return {
+    success: true,
+    permissionId: data.id,
+    message: `Acesso liberado com sucesso no Google Drive para ${cleanEmail}!`
   };
 }

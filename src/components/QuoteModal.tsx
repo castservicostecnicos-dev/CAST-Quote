@@ -15,15 +15,20 @@ import {
   PenTool,
   UserPlus,
   Copy,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Quote, Client, Technician, ItemRow, PhotoRecord } from '../types';
+import { Quote, Client, Technician, ItemRow, PhotoRecord, ServiceItem } from '../types';
 import { VerticalCameraModal } from './VerticalCameraModal';
 import { SignatureModal } from './SignatureModal';
 import { QuickClientModal } from './QuickClientModal';
+import { ItemSelectorModal } from './ItemSelectorModal';
+import { ItemAutocompleteInput } from './ItemAutocompleteInput';
+import { AutoMaterialsPromptModal } from './AutoMaterialsPromptModal';
 import { COMMON_ITEM_SUGGESTIONS } from '../constants/itemSuggestions';
+import { useAutosaveDraft } from '../hooks/useAutosaveDraft';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -42,6 +47,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const [clients, setClients] = useState<Client[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [catalogServices, setCatalogServices] = useState<ServiceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraModalMode, setCameraModalMode] = useState<'camera' | 'file'>('file');
@@ -83,26 +89,410 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
   const [clientSignedAt, setClientSignedAt] = useState<string | undefined>(undefined);
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
-  // Load auxiliary data
-  useEffect(() => {
-    if (isOpen) {
-      loadAuxiliaryData();
-      if (quoteToEdit) {
-        initEditState(quoteToEdit);
+  // Item Selector Modal State (Rolagem vertical e filtro automático em tempo real)
+  const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
+  const [itemPickerType, setItemPickerType] = useState<'all' | 'servico' | 'material'>('all');
+  const [targetRowIndex, setTargetRowIndex] = useState<number | null>(null);
+  const [pickerMode, setPickerMode] = useState<'replace' | 'insert_below'>('replace');
+  const [activeItemIndex, setActiveItemIndex] = useState<number>(0);
+
+  const openItemPicker = (type: 'all' | 'servico' | 'material' = 'all', rowIndex: number | null = null) => {
+    setItemPickerType(type);
+    setTargetRowIndex(rowIndex);
+    setPickerMode('replace');
+    setIsItemPickerOpen(true);
+  };
+
+  const openItemPickerBelow = (index: number, type: 'all' | 'servico' | 'material' = 'all') => {
+    setItemPickerType(type);
+    setTargetRowIndex(index);
+    setPickerMode('insert_below');
+    setIsItemPickerOpen(true);
+  };
+
+  // State for Automatic Materials Recognition Prompt Modal
+  const [autoMaterialsPrompt, setAutoMaterialsPrompt] = useState<{
+    isOpen: boolean;
+    service: {
+      description: string;
+      item_type: 'servico';
+      unit: string;
+      unit_price: number;
+      quantity: number;
+    };
+    requiredMaterials: any[];
+    targetRowIndex: number | null;
+    pickerMode: 'replace' | 'insert_below';
+  } | null>(null);
+
+  const applySingleItem = (
+    selected: {
+      description: string;
+      item_type: 'servico' | 'material';
+      unit: string;
+      unit_price: number;
+    },
+    targetIdx: number | null,
+    mode: 'replace' | 'insert_below'
+  ) => {
+    const qty = 1;
+    const price = selected.unit_price || 0;
+    const newItem: ItemRow = {
+      item_type: selected.item_type,
+      description: selected.description,
+      quantity: qty,
+      unit: selected.unit || 'UN',
+      unit_price: price,
+      total_price: Number((qty * price).toFixed(2))
+    };
+
+    if (mode === 'insert_below' && targetIdx !== null && targetIdx >= 0) {
+      if (items.length === 1 && !items[0].description.trim() && items[0].unit_price === 0) {
+        setItems([newItem]);
+        setActiveItemIndex(0);
       } else {
-        resetForm();
+        const updated = [...items];
+        const insertIndex = targetIdx + 1;
+        updated.splice(insertIndex, 0, newItem);
+        setItems(updated);
+        setActiveItemIndex(insertIndex);
+      }
+    } else if (targetIdx !== null && items[targetIdx]) {
+      const updated = [...items];
+      const currentQty = Number(updated[targetIdx].quantity) || 1;
+      updated[targetIdx] = {
+        ...updated[targetIdx],
+        description: selected.description,
+        item_type: selected.item_type,
+        unit: selected.unit || updated[targetIdx].unit || 'UN',
+        unit_price: price,
+        total_price: Number((currentQty * price).toFixed(2))
+      };
+      setItems(updated);
+      setActiveItemIndex(targetIdx);
+    } else {
+      const fallbackIdx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : items.length - 1;
+      if (items.length === 1 && !items[0].description.trim() && items[0].unit_price === 0) {
+        setItems([newItem]);
+        setActiveItemIndex(0);
+      } else {
+        const updated = [...items];
+        const insertIndex = fallbackIdx + 1;
+        updated.splice(insertIndex, 0, newItem);
+        setItems(updated);
+        setActiveItemIndex(insertIndex);
       }
     }
-  }, [isOpen, quoteToEdit]);
+  };
+
+  const handleSelectItemFromPicker = (selected: {
+    description: string;
+    item_type: 'servico' | 'material';
+    unit: string;
+    unit_price: number;
+    required_materials?: any[];
+  }) => {
+    // Check if it is a service and has required materials
+    let reqMats = selected.required_materials;
+    if (!reqMats || reqMats.length === 0) {
+      const match = catalogServices.find(
+        (s) => s.name.trim().toLowerCase() === selected.description.trim().toLowerCase()
+      );
+      if (match && match.required_materials && match.required_materials.length > 0) {
+        reqMats = match.required_materials;
+      }
+    }
+
+    if (selected.item_type === 'servico' && reqMats && reqMats.length > 0) {
+      const currentQty =
+        targetRowIndex !== null && items[targetRowIndex] && Number(items[targetRowIndex].quantity) > 0
+          ? Number(items[targetRowIndex].quantity)
+          : 1;
+
+      setAutoMaterialsPrompt({
+        isOpen: true,
+        service: {
+          description: selected.description,
+          item_type: 'servico',
+          unit: selected.unit || 'UN',
+          unit_price: selected.unit_price || 0,
+          quantity: currentQty
+        },
+        requiredMaterials: reqMats,
+        targetRowIndex,
+        pickerMode
+      });
+      setIsItemPickerOpen(false);
+      return;
+    }
+
+    applySingleItem(selected, targetRowIndex, pickerMode);
+  };
+
+  const handleConfirmServiceAndMaterials = (data: {
+    service: {
+      description: string;
+      item_type: 'servico';
+      quantity: number;
+      unit: string;
+      unit_price: number;
+    };
+    materials: Array<{
+      description: string;
+      item_type: 'material';
+      quantity: number;
+      unit: string;
+      unit_price: number;
+    }>;
+  }) => {
+    if (!autoMaterialsPrompt) return;
+    const { targetRowIndex: targetIdx, pickerMode: mode } = autoMaterialsPrompt;
+
+    const srvRow: ItemRow = {
+      item_type: 'servico',
+      description: data.service.description,
+      quantity: data.service.quantity,
+      unit: data.service.unit,
+      unit_price: data.service.unit_price,
+      total_price: Number((data.service.quantity * data.service.unit_price).toFixed(2))
+    };
+
+    const matRows: ItemRow[] = data.materials.map((m) => ({
+      item_type: 'material',
+      description: m.description,
+      quantity: m.quantity,
+      unit: m.unit,
+      unit_price: m.unit_price,
+      total_price: Number((m.quantity * m.unit_price).toFixed(2))
+    }));
+
+    const rowsToInsert = [srvRow, ...matRows];
+
+    if (mode === 'insert_below' && targetIdx !== null && targetIdx >= 0) {
+      if (items.length === 1 && !items[0].description.trim() && items[0].unit_price === 0) {
+        setItems(rowsToInsert);
+        setActiveItemIndex(0);
+      } else {
+        const updated = [...items];
+        const insertIndex = targetIdx + 1;
+        updated.splice(insertIndex, 0, ...rowsToInsert);
+        setItems(updated);
+        setActiveItemIndex(insertIndex);
+      }
+    } else if (targetIdx !== null && items[targetIdx]) {
+      const updated = [...items];
+      updated[targetIdx] = srvRow;
+      if (matRows.length > 0) {
+        updated.splice(targetIdx + 1, 0, ...matRows);
+      }
+      setItems(updated);
+      setActiveItemIndex(targetIdx);
+    } else {
+      const fallbackIdx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : items.length - 1;
+      if (items.length === 1 && !items[0].description.trim() && items[0].unit_price === 0) {
+        setItems(rowsToInsert);
+        setActiveItemIndex(0);
+      } else {
+        const updated = [...items];
+        const insertIndex = fallbackIdx + 1;
+        updated.splice(insertIndex, 0, ...rowsToInsert);
+        setItems(updated);
+        setActiveItemIndex(insertIndex);
+      }
+    }
+
+    setAutoMaterialsPrompt(null);
+    setTargetRowIndex(null);
+  };
+
+  const handleServiceOnly = () => {
+    if (!autoMaterialsPrompt) return;
+    const { service, targetRowIndex: targetIdx, pickerMode: mode } = autoMaterialsPrompt;
+    applySingleItem(
+      {
+        description: service.description,
+        item_type: service.item_type,
+        unit: service.unit,
+        unit_price: service.unit_price
+      },
+      targetIdx,
+      mode
+    );
+    setAutoMaterialsPrompt(null);
+    setTargetRowIndex(null);
+  };
+
+  const handleSelectItemInRow = (
+    index: number,
+    selected: {
+      description: string;
+      item_type: 'servico' | 'material';
+      unit: string;
+      unit_price: number;
+      required_materials?: any[];
+    }
+  ) => {
+    let reqMats = selected.required_materials;
+    if (!reqMats || reqMats.length === 0) {
+      const match = catalogServices.find(
+        (s) => s.name.trim().toLowerCase() === selected.description.trim().toLowerCase()
+      );
+      if (match && match.required_materials && match.required_materials.length > 0) {
+        reqMats = match.required_materials;
+      }
+    }
+
+    if (selected.item_type === 'servico' && reqMats && reqMats.length > 0) {
+      const currentQty = Number(items[index]?.quantity) || 1;
+      setAutoMaterialsPrompt({
+        isOpen: true,
+        service: {
+          description: selected.description,
+          item_type: 'servico',
+          unit: selected.unit || 'UN',
+          unit_price: selected.unit_price || 0,
+          quantity: currentQty
+        },
+        requiredMaterials: reqMats,
+        targetRowIndex: index,
+        pickerMode: 'replace'
+      });
+      return;
+    }
+
+    applySingleItem(selected, index, 'replace');
+  };
+
+  // Autosave Draft State & Debounce Mechanism
+  const [isFormReady, setIsFormReady] = useState(false);
+  const [isDraftDismissed, setIsDraftDismissed] = useState(false);
+
+  const draftStorageKey = quoteToEdit
+    ? `cast_draft_quote_${quoteToEdit.id}`
+    : 'cast_draft_quote_new';
+
+  const currentFormData = React.useMemo(() => ({
+    clientId,
+    technicianId,
+    date,
+    validityDate,
+    status,
+    description,
+    address,
+    notes,
+    items,
+    discount,
+    addition,
+    photos,
+    clientSignature,
+    clientSignedAt
+  }), [
+    clientId,
+    technicianId,
+    date,
+    validityDate,
+    status,
+    description,
+    address,
+    notes,
+    items,
+    discount,
+    addition,
+    photos,
+    clientSignature,
+    clientSignedAt
+  ]);
+
+  const hasMeaningfulQuoteChanges = React.useCallback((d: typeof currentFormData) => {
+    if (!d) return false;
+    if (d.description && d.description.trim().length > 0) return true;
+    if (d.address && d.address.trim().length > 0) return true;
+    if (d.notes && d.notes.trim() !== 'Garantia de 12 meses nos equipamentos e 90 dias nos serviços.') return true;
+    if (d.discount > 0 || d.addition > 0) return true;
+    if (d.photos && d.photos.length > 0) return true;
+    if (d.clientSignature) return true;
+    if (d.items && d.items.length > 1) return true;
+    if (d.items && d.items.length === 1) {
+      const item = d.items[0];
+      if (item.description && item.description.trim().length > 0) return true;
+      if (item.unit_price > 0) return true;
+    }
+    return false;
+  }, []);
+
+  const {
+    status: autosaveStatus,
+    lastSavedAt,
+    hasSavedDraft,
+    savedDraft,
+    clearDraft
+  } = useAutosaveDraft({
+    storageKey: draftStorageKey,
+    data: currentFormData,
+    enabled: isOpen,
+    isReady: isFormReady,
+    debounceMs: 1200,
+    hasMeaningfulChanges: hasMeaningfulQuoteChanges
+  });
+
+  const showDraftBanner = isOpen && hasSavedDraft && !!savedDraft && !isDraftDismissed;
+
+  const handleRestoreDraft = () => {
+    if (!savedDraft || !savedDraft.data) return;
+    const d = savedDraft.data;
+    if (d.clientId !== undefined) setClientId(d.clientId);
+    if (d.technicianId !== undefined) setTechnicianId(d.technicianId);
+    if (d.date) setDate(d.date);
+    if (d.validityDate) setValidityDate(d.validityDate);
+    if (d.status) setStatus(d.status);
+    if (d.description !== undefined) setDescription(d.description);
+    if (d.address !== undefined) setAddress(d.address);
+    if (d.notes !== undefined) setNotes(d.notes);
+    if (d.items && d.items.length > 0) setItems(d.items);
+    if (d.discount !== undefined) setDiscount(d.discount);
+    if (d.addition !== undefined) setAddition(d.addition);
+    if (d.photos) setPhotos(d.photos);
+    if (d.clientSignature !== undefined) setClientSignature(d.clientSignature);
+    if (d.clientSignedAt !== undefined) setClientSignedAt(d.clientSignedAt);
+    setIsDraftDismissed(true);
+  };
+
+  const handleDismissDraft = () => {
+    clearDraft();
+    setIsDraftDismissed(true);
+  };
+
+  // Load auxiliary data & initialize form state
+  useEffect(() => {
+    if (isOpen) {
+      setIsDraftDismissed(false);
+      setIsFormReady(false);
+      const init = async () => {
+        await loadAuxiliaryData();
+        if (quoteToEdit) {
+          await initEditState(quoteToEdit);
+        } else {
+          resetForm();
+        }
+        setIsFormReady(true);
+      };
+      init();
+    } else {
+      setIsFormReady(false);
+      setIsDraftDismissed(false);
+    }
+  }, [isOpen, quoteToEdit?.id]);
 
   const loadAuxiliaryData = async () => {
     try {
-      const [cList, tList] = await Promise.all([
+      const [cList, tList, sList] = await Promise.all([
         api.getClients(activeCompany?.id, user?.role),
-        api.getTechnicians(activeCompany?.id, user?.role)
+        api.getTechnicians(activeCompany?.id, user?.role),
+        api.getServices({ companyId: activeCompany?.id, userRole: user?.role }).catch(() => [])
       ]);
       setClients(cList);
       setTechnicians(tList);
+      setCatalogServices(sList || []);
       if (!quoteToEdit && cList.length > 0) {
         setClientId(cList[0].id);
       }
@@ -110,7 +500,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         setTechnicianId(tList[0].id);
       }
     } catch (err) {
-      console.error('Failed to load clients/technicians:', err);
+      console.error('Failed to load clients/technicians/services:', err);
     }
   };
 
@@ -183,10 +573,26 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const handleItemDescriptionChange = (index: number, val: string) => {
     const updated = [...items];
+    const catalogMatch = catalogServices.find(
+      (c) => c.name.toLowerCase() === val.trim().toLowerCase()
+    );
     const match = COMMON_ITEM_SUGGESTIONS.find(
       (s) => s.description.toLowerCase() === val.trim().toLowerCase()
     );
-    if (match) {
+
+    if (catalogMatch) {
+      const currentPrice = Number(updated[index].unit_price) || 0;
+      const unitPrice = catalogMatch.default_price && currentPrice === 0 ? catalogMatch.default_price : currentPrice;
+      const qty = Number(updated[index].quantity) || 1;
+      updated[index] = {
+        ...updated[index],
+        description: catalogMatch.name,
+        item_type: catalogMatch.item_type,
+        unit: catalogMatch.unit || updated[index].unit || 'UN',
+        unit_price: unitPrice,
+        total_price: Number((qty * unitPrice).toFixed(2))
+      };
+    } else if (match) {
       const currentPrice = Number(updated[index].unit_price) || 0;
       const unitPrice = match.default_price && currentPrice === 0 ? match.default_price : currentPrice;
       const qty = Number(updated[index].quantity) || 1;
@@ -207,51 +613,64 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     setItems(updated);
   };
 
-  const addItem = () => {
-    setItems([
-      {
-        item_type: 'material',
-        description: '',
-        quantity: 1,
-        unit: 'UN',
-        unit_price: 0,
-        total_price: 0
-      },
-      ...items
-    ]);
+  const insertItemBelow = (index: number, type: 'servico' | 'material' = 'material') => {
+    const newItem: ItemRow = {
+      item_type: type,
+      description: '',
+      quantity: 1,
+      unit: 'UN',
+      unit_price: 0,
+      total_price: 0
+    };
+
+    if (items.length === 1 && !items[0].description.trim() && items[0].unit_price === 0) {
+      setItems([newItem]);
+      setActiveItemIndex(0);
+      setTimeout(() => {
+        const el = document.getElementById('quote-item-desc-0');
+        if (el) el.focus();
+      }, 50);
+      return;
+    }
+
+    const updated = [...items];
+    const insertIndex = index + 1;
+    updated.splice(insertIndex, 0, newItem);
+    setItems(updated);
+    setActiveItemIndex(insertIndex);
+
+    setTimeout(() => {
+      const el = document.getElementById(`quote-item-desc-${insertIndex}`);
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 70);
+  };
+
+  const addItem = (type: 'servico' | 'material' = 'material') => {
+    // Regra: abre um novo item logo abaixo do item atualmente ativo ou do último item
+    const targetIdx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : items.length - 1;
+    insertItemBelow(targetIdx, type);
   };
 
   const addServiceItem = () => {
-    setItems([
-      {
-        item_type: 'servico',
-        description: '',
-        quantity: 1,
-        unit: 'UN',
-        unit_price: 0,
-        total_price: 0
-      },
-      ...items
-    ]);
+    const targetIdx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : items.length - 1;
+    insertItemBelow(targetIdx, 'servico');
   };
 
   const addMaterialItem = () => {
-    setItems([
-      {
-        item_type: 'material',
-        description: '',
-        quantity: 1,
-        unit: 'UN',
-        unit_price: 0,
-        total_price: 0
-      },
-      ...items
-    ]);
+    const targetIdx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : items.length - 1;
+    insertItemBelow(targetIdx, 'material');
   };
 
   const duplicateItem = (index: number) => {
     const itemToDup = items[index];
-    setItems([{ ...itemToDup }, ...items]);
+    const updated = [...items];
+    const insertIndex = index + 1;
+    updated.splice(insertIndex, 0, { ...itemToDup });
+    setItems(updated);
+    setActiveItemIndex(insertIndex);
   };
 
   const removeItem = (index: number) => {
@@ -318,6 +737,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         await api.createQuote(payload);
       }
 
+      clearDraft();
       onSaved();
       onClose();
     } catch (err: any) {
@@ -348,13 +768,71 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
+
+            <div className="flex items-center gap-3">
+              {/* Autosave Status Indicator */}
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                {autosaveStatus === 'saving' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-amber-300 font-medium">Salvando rascunho...</span>
+                  </>
+                ) : lastSavedAt ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-slate-300">
+                      Rascunho salvo às {lastSavedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className="text-slate-400">Salvamento automático ativo</span>
+                  </>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                title="Fechar (seu rascunho fica salvo)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
+
+          {/* Recovery Banner for Autosaved Draft */}
+          {showDraftBanner && savedDraft && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <div>
+                  <span className="font-bold text-amber-900">Rascunho não finalizado encontrado:</span>
+                  <span className="ml-1 text-amber-800">
+                    Você tem alterações não salvas guardadas às {savedDraft.formattedTime}.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRestoreDraft}
+                  className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition cursor-pointer active:scale-98"
+                >
+                  Restaurar Rascunho
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissDraft}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs transition cursor-pointer"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Form Body */}
           <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -448,15 +926,17 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                     <DollarSign className="w-3.5 h-3.5 text-blue-600" />
                     Itens e Serviços (Cálculo Automático)
                   </h3>
-                  <p className="text-[11px] text-slate-500">Adicione materiais e mão de obra com autocompletar</p>
+                  <p className="text-[11px] text-slate-500">
+                    Regra: novos itens abrem <strong className="text-blue-700">logo abaixo do item que você estiver preenchendo</strong>
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     id="btn-quote-add-service"
-                    onClick={addServiceItem}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition cursor-pointer"
-                    title="Adicionar linha de serviço rapidamente no topo"
+                    onClick={() => insertItemBelow(activeItemIndex, 'servico')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold border border-blue-200 transition cursor-pointer shadow-2xs"
+                    title="Adicionar serviço logo abaixo do item em preenchimento"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Serviço</span>
@@ -464,22 +944,32 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                   <button
                     type="button"
                     id="btn-quote-add-material"
-                    onClick={addMaterialItem}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold border border-emerald-200 transition cursor-pointer"
-                    title="Adicionar linha de material rapidamente no topo"
+                    onClick={() => insertItemBelow(activeItemIndex, 'material')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-bold border border-amber-200 transition cursor-pointer shadow-2xs"
+                    title="Adicionar material logo abaixo do item em preenchimento"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Material</span>
                   </button>
                   <button
                     type="button"
-                    id="btn-quote-add-item"
-                    onClick={addItem}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-                    title="Adicionar novo item no topo"
+                    id="btn-quote-add-blank"
+                    onClick={() => addItem('material')}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                    title="Inserir novo item logo abaixo do item ativo"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Item</span>
+                    <Plus className="w-3 h-3 text-slate-500" />
+                    <span>+ Novo Item</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-quote-add-item"
+                    onClick={() => openItemPickerBelow(activeItemIndex, 'all')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                    title="Abrir catálogo e inserir item logo abaixo"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Carregar Item</span>
                   </button>
                 </div>
               </div>
@@ -490,7 +980,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                   <thead className="text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-2 w-36">Tipo</th>
-                      <th className="py-2.5 px-2 min-w-[220px]">Descrição dos Itens & Serviços</th>
+                      <th className="py-2.5 px-2 min-w-[240px]">Descrição dos Itens & Serviços</th>
                       <th className="py-2.5 px-2 w-24">Qtd</th>
                       <th className="py-2.5 px-2 w-20">Un</th>
                       <th className="py-2.5 px-2 w-32">Valor Unit. (R$)</th>
@@ -500,91 +990,173 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-200/70">
                     {items.map((item, index) => (
-                      <tr key={index} className="hover:bg-white/90 transition group">
-                        <td className="py-2 px-2 align-middle">
-                          <select
-                            value={item.item_type}
-                            onChange={(e) => handleItemChange(index, 'item_type', e.target.value)}
-                            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                          >
-                            <option value="servico">Serviço</option>
-                            <option value="material">Material</option>
-                          </select>
-                        </td>
-
-                        <td className="py-2 px-2 align-middle">
-                          <input
-                            type="text"
-                            required
-                            list="quote-item-datalist"
-                            value={item.description}
-                            onChange={(e) => handleItemDescriptionChange(index, e.target.value)}
-                            placeholder="Digite ou escolha uma sugestão..."
-                            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 align-middle">
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="any"
-                            required
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 align-middle">
-                          <input
-                            type="text"
-                            value={item.unit || 'UN'}
-                            onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
-                            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center uppercase focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 align-middle">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            required
-                            value={item.unit_price === 0 ? '' : item.unit_price}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
-                            placeholder="0,00"
-                            className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 align-middle font-bold text-slate-900 text-right text-sm whitespace-nowrap">
-                          {formatBrl(item.total_price)}
-                        </td>
-
-                        <td className="py-2 px-1 align-middle text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => duplicateItem(index)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
-                              title="Duplicar linha"
+                      <React.Fragment key={index}>
+                        <tr
+                          className={`transition group ${
+                            activeItemIndex === index ? 'bg-blue-50/40' : 'hover:bg-white/90'
+                          }`}
+                          onClick={() => setActiveItemIndex(index)}
+                        >
+                          <td className="py-2 px-2 align-middle">
+                            <select
+                              value={item.item_type}
+                              onFocus={() => setActiveItemIndex(index)}
+                              onChange={(e) => handleItemChange(index, 'item_type', e.target.value)}
+                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                             >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                            {items.length > 1 && (
+                              <option value="servico">Serviço</option>
+                              <option value="material">Material</option>
+                            </select>
+                          </td>
+
+                          <td className="py-2 px-2 align-middle">
+                            <ItemAutocompleteInput
+                              id={`quote-item-desc-${index}`}
+                              value={item.description}
+                              onFocus={() => setActiveItemIndex(index)}
+                              onChange={(val) => handleItemDescriptionChange(index, val)}
+                              onSelectItem={(selected) => handleSelectItemInRow(index, selected)}
+                              onOpenFullPicker={() => openItemPicker(item.item_type, index)}
+                              catalogServices={catalogServices}
+                              currentType={item.item_type}
+                              placeholder="Digite para filtrar ou abra a lista..."
+                              themeColor="blue"
+                              required
+                            />
+                          </td>
+
+                          <td className="py-2 px-2 align-middle">
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="any"
+                              required
+                              value={item.quantity}
+                              onFocus={() => setActiveItemIndex(index)}
+                              onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                            />
+                          </td>
+
+                          <td className="py-2 px-2 align-middle">
+                            <input
+                              type="text"
+                              value={item.unit || 'UN'}
+                              onFocus={() => setActiveItemIndex(index)}
+                              onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center uppercase focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                            />
+                          </td>
+
+                          <td className="py-2 px-2 align-middle">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              required
+                              value={item.unit_price === 0 ? '' : item.unit_price}
+                              onFocus={() => setActiveItemIndex(index)}
+                              onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                              placeholder="0,00"
+                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                            />
+                          </td>
+
+                          <td className="py-2 px-2 align-middle font-bold text-slate-900 text-right text-sm whitespace-nowrap">
+                            {formatBrl(item.total_price)}
+                          </td>
+
+                          <td className="py-2 px-1 align-middle text-center">
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
-                                onClick={() => removeItem(index)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
-                                title="Remover linha"
+                                onClick={() => insertItemBelow(index, item.item_type)}
+                                className="p-1.5 rounded-lg text-blue-600 hover:text-blue-800 hover:bg-blue-100 transition cursor-pointer font-bold"
+                                title="Inserir novo item logo abaixo deste"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Plus className="w-4 h-4" />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                              <button
+                                type="button"
+                                onClick={() => openItemPicker(item.item_type, index)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                                title="Abrir catálogo e lista com rolagem vertical"
+                              >
+                                <Search className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => duplicateItem(index)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                                title="Duplicar linha logo abaixo"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              {items.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(index)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                                  title="Remover linha"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Botão de Novo Item LOGO ABAIXO DO ITEM QUE ESTÁ SENDO PREENCHIDO */}
+                        <tr className="border-b border-slate-200/80 bg-slate-50/60">
+                          <td colSpan={7} className="py-1.5 px-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => insertItemBelow(index, item.item_type)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-2xs transition cursor-pointer active:scale-98"
+                                  title={`Inserir novo item logo abaixo do item #${index + 1}`}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>+ Novo Item Abaixo</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => insertItemBelow(index, 'servico')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold transition cursor-pointer"
+                                  title="Adicionar serviço logo abaixo deste"
+                                >
+                                  <span>+ Serviço</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => insertItemBelow(index, 'material')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 text-xs font-semibold transition cursor-pointer"
+                                  title="Adicionar material logo abaixo deste"
+                                >
+                                  <span>+ Material</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openItemPickerBelow(index, 'all')}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                                  title="Carregar item do catálogo logo abaixo deste"
+                                >
+                                  <Search className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Carregar do Catálogo</span>
+                                </button>
+                              </div>
+
+                              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                                Inserir logo abaixo do item #{index + 1}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -595,7 +1167,10 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 {items.map((item, index) => (
                   <div
                     key={index}
-                    className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-3"
+                    onClick={() => setActiveItemIndex(index)}
+                    className={`rounded-2xl border bg-white p-3.5 shadow-2xs space-y-3 transition ${
+                      activeItemIndex === index ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'
+                    }`}
                   >
                     {/* Cabeçalho do Card */}
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -615,9 +1190,17 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         </span>
                         <button
                           type="button"
+                          onClick={() => openItemPicker(item.item_type, index)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Abrir lista vertical de itens"
+                        >
+                          <Search className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => duplicateItem(index)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                          title="Duplicar item"
+                          title="Duplicar item logo abaixo"
                         >
                           <Copy className="w-4 h-4" />
                         </button>
@@ -643,6 +1226,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         </label>
                         <select
                           value={item.item_type}
+                          onFocus={() => setActiveItemIndex(index)}
                           onChange={(e) => handleItemChange(index, 'item_type', e.target.value)}
                           className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm font-medium text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                         >
@@ -651,19 +1235,32 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                         </select>
                       </div>
 
-                      {/* Descrição - Ocupa linha inteira para visualização ampla do que foi digitado */}
+                      {/* Descrição - Com campo de busca e autocompletar em tempo real */}
                       <div className="w-full">
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Descrição do Item / Serviço
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          list="quote-item-datalist"
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-bold text-slate-600">
+                            Descrição do Item / Serviço
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => openItemPicker(item.item_type, index)}
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Search className="w-3 h-3" /> Catálogo / Lista
+                          </button>
+                        </div>
+                        <ItemAutocompleteInput
+                          id={`quote-item-desc-mob-${index}`}
                           value={item.description}
-                          onChange={(e) => handleItemDescriptionChange(index, e.target.value)}
-                          placeholder="Descreva detalhadamente ou selecione uma sugestão..."
-                          className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                          onFocus={() => setActiveItemIndex(index)}
+                          onChange={(val) => handleItemDescriptionChange(index, val)}
+                          onSelectItem={(selected) => handleSelectItemInRow(index, selected)}
+                          onOpenFullPicker={() => openItemPicker(item.item_type, index)}
+                          catalogServices={catalogServices}
+                          currentType={item.item_type}
+                          placeholder="Digite para buscar ou abra a lista..."
+                          themeColor="blue"
+                          required
                         />
                       </div>
 
@@ -679,6 +1276,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             step="any"
                             required
                             value={item.quantity}
+                            onFocus={() => setActiveItemIndex(index)}
                             onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-center focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
@@ -691,6 +1289,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                           <input
                             type="text"
                             value={item.unit || 'UN'}
+                            onFocus={() => setActiveItemIndex(index)}
                             onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                             placeholder="UN"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-2.5 py-2 text-sm text-slate-800 font-semibold text-center uppercase focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
@@ -707,11 +1306,63 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             step="any"
                             required
                             value={item.unit_price === 0 ? '' : item.unit_price}
+                            onFocus={() => setActiveItemIndex(index)}
                             onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
                             placeholder="0,00"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-right focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </div>
+                      </div>
+                    </div>
+
+                    {/* BOTÃO DE NOVO ITEM LOGO ABAIXO DO ITEM QUE ESTÁ SENDO PREENCHIDO */}
+                    <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5 text-blue-600" />
+                          Adicionar Item Logo Abaixo deste (#{index + 1}):
+                        </span>
+                        <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded">
+                          Abre abaixo
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => insertItemBelow(index, item.item_type)}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer active:scale-98"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>+ Novo Item</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openItemPickerBelow(index, 'all')}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition cursor-pointer border border-slate-200"
+                        >
+                          <Search className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Do Catálogo</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => insertItemBelow(index, 'servico')}
+                          className="text-xs font-bold text-blue-600 hover:text-blue-800 py-0.5 px-2 rounded hover:bg-blue-50"
+                        >
+                          + Serviço Abaixo
+                        </button>
+                        <span className="text-slate-300">•</span>
+                        <button
+                          type="button"
+                          onClick={() => insertItemBelow(index, 'material')}
+                          className="text-xs font-bold text-amber-700 hover:text-amber-900 py-0.5 px-2 rounded hover:bg-amber-50"
+                        >
+                          + Material Abaixo
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1023,12 +1674,55 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
       />
       {/* Datalist for fast item and service suggestions */}
       <datalist id="quote-item-datalist">
+        {catalogServices
+          .filter((cs) => cs.active)
+          .map((cs) => (
+            <option key={`cat-${cs.id}`} value={cs.name}>
+              {cs.item_type === 'servico' ? '🛠️ [Catálogo]' : '📦 [Catálogo]'} {cs.category || 'Geral'} • {cs.unit} • {cs.default_price ? `R$ ${cs.default_price.toFixed(2)}` : ''}
+            </option>
+          ))}
         {COMMON_ITEM_SUGGESTIONS.map((sug, i) => (
           <option key={i} value={sug.description}>
             {sug.item_type === 'servico' ? '🛠️' : '📦'} {sug.category} • {sug.unit} • {sug.default_price ? `R$ ${sug.default_price}` : ''}
           </option>
         ))}
       </datalist>
+
+      {/* Item Selector Modal com Rolagem Vertical e Filtro em Tempo Real */}
+      <ItemSelectorModal
+        isOpen={isItemPickerOpen}
+        onClose={() => {
+          setIsItemPickerOpen(false);
+          setTargetRowIndex(null);
+        }}
+        onSelectItem={handleSelectItemFromPicker}
+        onAddBlankItem={(blankType) => {
+          if (blankType === 'material') addMaterialItem();
+          else addServiceItem();
+        }}
+        initialType={itemPickerType}
+        catalogServices={catalogServices}
+        themeColor="blue"
+      />
+
+      {/* Auto Materials Prompt Modal */}
+      {autoMaterialsPrompt && (
+        <AutoMaterialsPromptModal
+          isOpen={autoMaterialsPrompt.isOpen}
+          onClose={() => {
+            setAutoMaterialsPrompt(null);
+            setTargetRowIndex(null);
+          }}
+          serviceName={autoMaterialsPrompt.service.description}
+          serviceUnit={autoMaterialsPrompt.service.unit}
+          servicePrice={autoMaterialsPrompt.service.unit_price}
+          serviceQuantity={autoMaterialsPrompt.service.quantity}
+          requiredMaterials={autoMaterialsPrompt.requiredMaterials}
+          onConfirm={handleConfirmServiceAndMaterials}
+          onServiceOnly={handleServiceOnly}
+          themeColor="blue"
+        />
+      )}
 
       {/* Quick Client Modal for instant inline client registration */}
       <QuickClientModal

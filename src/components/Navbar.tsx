@@ -20,7 +20,8 @@ import {
   Globe,
   RotateCcw,
   Settings,
-  Cloud
+  Cloud,
+  Boxes
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -84,7 +85,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const canSeeClientsAndTechs = user?.role === 'GERENTE' || user?.role === 'ADM';
+  const canSeeClientsAndTechs = user?.role === 'GERENTE' || user?.role === 'ADM' || user?.role === 'SUPERVISOR';
+  const canSeeServices = user?.role === 'GERENTE' || user?.role === 'ADM' || user?.role === 'SUPERVISOR';
   const canSeeUsers = user?.role === 'GERENTE' || user?.role === 'ADM';
   const canSeeCompanies = user?.role === 'DEV';
 
@@ -336,7 +338,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 truncate">{user?.name}</p>
-                      <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
+                      <p className="text-[11px] text-slate-400 truncate email-text lowercase-field">{user?.email}</p>
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         <span
                           className={`inline-block px-1.5 py-0.2 rounded-sm text-[9px] font-bold border ${getRoleBadgeColor(
@@ -548,6 +550,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
 
                 <button
+                  id="nav-tab-services-dev"
+                  onClick={() => onSelectTab('services')}
+                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                    currentTab === 'services'
+                      ? 'bg-purple-700 text-white shadow-xs font-bold'
+                      : 'text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5" />
+                  <span>Catálogo de Serviços</span>
+                </button>
+
+                <button
                   id="nav-tab-branding-dev"
                   onClick={() => setShowBrandingModal(true)}
                   className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition"
@@ -636,6 +651,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <UserCheck className="w-3.5 h-3.5" />
                     <span>Técnicos</span>
+                  </button>
+                )}
+
+                {canSeeServices && (
+                  <button
+                    id="nav-tab-services"
+                    onClick={() => onSelectTab('services')}
+                    style={currentTab === 'services' ? { color: brandColor } : undefined}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                      currentTab === 'services'
+                        ? 'bg-white shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>Serviços & Materiais</span>
                   </button>
                 )}
 

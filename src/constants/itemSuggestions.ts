@@ -3,7 +3,7 @@ export interface ItemSuggestion {
   item_type: 'servico' | 'material';
   unit: string;
   default_price?: number;
-  category: 'Serviço' | 'Material';
+  category: string;
 }
 
 export const COMMON_ITEM_SUGGESTIONS: ItemSuggestion[] = [
@@ -78,6 +78,27 @@ export const COMMON_ITEM_SUGGESTIONS: ItemSuggestion[] = [
     default_price: 150,
     category: 'Serviço'
   },
+  {
+    description: 'Instalação e alinhamento de câmera CFTV / IP',
+    item_type: 'servico',
+    unit: 'UN',
+    default_price: 120,
+    category: 'Serviço'
+  },
+  {
+    description: 'Configuração de acesso remoto DVR / NVR no smartphone',
+    item_type: 'servico',
+    unit: 'UN',
+    default_price: 160,
+    category: 'Serviço'
+  },
+  {
+    description: 'Instalação de fechadura digital biométrica / eletroímã',
+    item_type: 'servico',
+    unit: 'UN',
+    default_price: 220,
+    category: 'Serviço'
+  },
 
   // Materiais Técnicos Comuns
   {
@@ -134,6 +155,104 @@ export const COMMON_ITEM_SUGGESTIONS: ItemSuggestion[] = [
     item_type: 'material',
     unit: 'PCT',
     default_price: 24.0,
+    category: 'Material'
+  },
+  {
+    description: 'Câmera Dome Full HD 1080p Lente 2.8mm Visão Noturna 20m',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 185.0,
+    category: 'Material'
+  },
+  {
+    description: 'Câmera Bullet Full HD 1080p IP67 Metálica Infravermelho 30m',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 215.0,
+    category: 'Material'
+  },
+  {
+    description: 'Câmera IP Wi-Fi 4MP com Microfone e Auto-Tracking',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 290.0,
+    category: 'Material'
+  },
+  {
+    description: 'Gravador DVR Stand Alone 8 Canais Full HD 1080p Multi HD',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 520.0,
+    category: 'Material'
+  },
+  {
+    description: 'Gravador NVR 16 Canais 4K com Suporte a PoE',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 1150.0,
+    category: 'Material'
+  },
+  {
+    description: 'HD Interno para CFTV Surveillance 1TB WD Purple / SkyHawk',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 380.0,
+    category: 'Material'
+  },
+  {
+    description: 'HD Interno para CFTV Surveillance 2TB WD Purple / SkyHawk',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 520.0,
+    category: 'Material'
+  },
+  {
+    description: 'Switch 8 Portas Gigabit Ethernet 10/100/1000',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 190.0,
+    category: 'Material'
+  },
+  {
+    description: 'Switch 8 Portas PoE Fast/Gigabit para Câmeras IP',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 430.0,
+    category: 'Material'
+  },
+  {
+    description: 'Balun de vídeo passivo HD / Full HD para par trançado (Par)',
+    item_type: 'material',
+    unit: 'PAR',
+    default_price: 28.0,
+    category: 'Material'
+  },
+  {
+    description: 'Caixa de passagem organizadora para CFTV com vedação IP65',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 14.5,
+    category: 'Material'
+  },
+  {
+    description: 'Fechadura Digital Biométrica com Senha, Cartão RFID e Chave',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 680.0,
+    category: 'Material'
+  },
+  {
+    description: 'Fechadura Eletroímã 150kgf com suporte e sensor de porta',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 260.0,
+    category: 'Material'
+  },
+  {
+    description: 'No-break Interativo 1200VA Bivolt com estabilizador interno',
+    item_type: 'material',
+    unit: 'UN',
+    default_price: 690.0,
     category: 'Material'
   }
 ];

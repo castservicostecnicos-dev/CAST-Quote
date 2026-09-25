@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import initSqlJs, { Database } from 'sql.js';
+import { DEFAULT_CATALOG } from './defaultCatalog';
 
 let dbInstance: Database | null = null;
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -36,7 +37,14 @@ export async function getDatabase(): Promise<Database> {
   initSchema(dbInstance);
   try {
     dbInstance.run("UPDATE work_orders SET technician_id = '' WHERE technician_id IS NULL;");
-  } catch {}
+    // Ensure all emails across all tables are strictly lowercase and trimmed
+    dbInstance.run("UPDATE users SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email != '';");
+    dbInstance.run("UPDATE technicians SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email != '';");
+    dbInstance.run("UPDATE clients SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email != '';");
+    dbInstance.run("UPDATE companies SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email != '';");
+  } catch (err) {
+    console.warn('Startup database sanitization note:', err);
+  }
   saveDatabase();
   return dbInstance;
 }
@@ -129,6 +137,24 @@ function initSchema(db: Database) {
       city TEXT,
       state TEXT,
       notes TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS services (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT DEFAULT 'Serviço',
+      subcategory TEXT,
+      item_type TEXT DEFAULT 'servico',
+      unit TEXT DEFAULT 'UN',
+      purchase_unit TEXT,
+      consumption_unit TEXT,
+      package_quantity TEXT,
+      unit_cost REAL,
+      default_price REAL DEFAULT 0,
+      active INTEGER DEFAULT 1,
       created_at TEXT NOT NULL
     );
 
@@ -257,6 +283,20 @@ function initSchema(db: Database) {
       created_at TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS service_required_materials (
+      id TEXT PRIMARY KEY,
+      service_id TEXT NOT NULL,
+      material_id TEXT,
+      material_name TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 1,
+      unit TEXT DEFAULT 'UN',
+      default_price REAL DEFAULT 0,
+      is_optional INTEGER DEFAULT 0,
+      notes TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_srv_req_mat_service_id ON service_required_materials(service_id);
   `);
 
   // Migration check: ensure created_at exists on drive_settings table
@@ -276,6 +316,13 @@ function initSchema(db: Database) {
   try { db.run(`ALTER TABLE work_orders ADD COLUMN technician_signed_at TEXT;`); } catch {}
   try { db.run(`ALTER TABLE quotes ADD COLUMN client_signature TEXT;`); } catch {}
   try { db.run(`ALTER TABLE quotes ADD COLUMN client_signed_at TEXT;`); } catch {}
+
+  // Migration check: ensure extended material & unit fields exist on services table
+  try { db.run(`ALTER TABLE services ADD COLUMN subcategory TEXT;`); } catch {}
+  try { db.run(`ALTER TABLE services ADD COLUMN purchase_unit TEXT;`); } catch {}
+  try { db.run(`ALTER TABLE services ADD COLUMN consumption_unit TEXT;`); } catch {}
+  try { db.run(`ALTER TABLE services ADD COLUMN package_quantity TEXT;`); } catch {}
+  try { db.run(`ALTER TABLE services ADD COLUMN unit_cost REAL;`); } catch {}
 
   // Migration check: ensure users table company_id allows NULL
   try {
@@ -345,176 +392,161 @@ function initSchema(db: Database) {
       );
     }
 
-    // Unbind all DEV accounts from any company
+    // DEV Master dev@castquote.com
+    const existingDev = queryOne(`SELECT * FROM users WHERE email = ?`, ['dev@castquote.com']);
+    if (!existingDev) {
+      db.run(
+        `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
+         VALUES ('usr-dev-master', NULL, 'Dev Master (Administrador Global)', 'dev@castquote.com', 'cast.2468', 'DEV', 1, ?)`,
+        [nowIso]
+      );
+    } else {
+      db.run(
+        `UPDATE users SET password = 'cast.2468', role = 'DEV', company_id = NULL, active = 1, name = 'Dev Master (Administrador Global)'
+         WHERE email = 'dev@castquote.com'`
+      );
+    }
+
+    // Desvincular todas as contas de desenvolvedores (DEV) de qualquer empresa
     db.run(`UPDATE users SET company_id = NULL WHERE role = 'DEV'`);
 
-    // Ensure comp-master-cast exists or maps to main CAST company
-    const existingMaster = queryOne(`SELECT * FROM companies WHERE id = ?`, ['comp-master-cast']);
-    if (!existingMaster) {
+    // Ensure Master Company comp-master-cast exists
+    const masterComp = queryOne(`SELECT id FROM companies WHERE id = ?`, ['comp-master-cast']);
+    if (!masterComp) {
       db.run(
         `INSERT INTO companies (id, name, cnpj, email, phone, address, city, state, logo_url, primary_color, active, created_at)
-         VALUES ('comp-master-cast', 'CAST Quote Engenharia & Serviços', '12.345.678/0001-90', 'contato@castquote.com.br', '(11) 98765-4321', 'Av. Paulista, 1000 - Bela Vista', 'São Paulo', 'SP', '', '#2563eb', 1, ?)`,
+         VALUES ('comp-master-cast', 'CAST Serviços Técnicos', '00.000.000/0001-99', 'cast.servicostecnicos@gmail.com', '(11) 99999-8888', 'Av. Paulista, 1000', 'São Paulo', 'SP', '', '#2563eb', 1, ?)`,
         [nowIso]
       );
     }
 
-    const existingCompCast = queryOne(`SELECT * FROM companies WHERE id = ?`, ['comp-cast']);
-    if (!existingCompCast) {
-      db.run(
-        `INSERT INTO companies (id, name, cnpj, email, phone, address, city, state, logo_url, primary_color, active, created_at)
-         VALUES ('comp-cast', 'CAST Serviços Técnicos', '12.345.678/0001-90', 'contato@castquote.com.br', '(11) 98765-4321', 'Av. Paulista, 1000 - Bela Vista', 'São Paulo', 'SP', '', '#2563eb', 1, ?)`,
-        [nowIso]
-      );
-    }
+    // Auto-seed removed to respect user requests to clear the catalog.
+    // Seeding can be triggered manually via UI button or API endpoint.
   } catch (err) {
     console.error('Error ensuring accounts and company defaults:', err);
   }
+}
 
-  // Seed default data if no companies exist
-  const count = queryOne<{ cnt: number }>(`SELECT count(*) as cnt FROM companies`);
-  if (!count || count.cnt === 0) {
-    seedInitialData(db);
+/**
+ * Cadastra/importa o catálogo padrão de serviços, materiais e vínculos de insumos necessários
+ */
+export function seedDefaultServicesAndMaterials(targetCompanyId: string = 'comp-master-cast') {
+  if (!dbInstance) return;
+  const nowIso = new Date().toISOString();
+  console.log(`[DATABASE] Semeando catálogo padrão de serviços e materiais para a empresa ${targetCompanyId}...`);
+
+  try {
+    dbInstance.run('BEGIN TRANSACTION;');
+
+    for (const item of DEFAULT_CATALOG) {
+      dbInstance.run(
+        `INSERT OR REPLACE INTO services (id, company_id, name, description, category, subcategory, item_type, unit, unit_cost, default_price, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        [
+          item.id,
+          targetCompanyId,
+          item.name,
+          item.description || '',
+          item.category || (item.item_type === 'material' ? 'Material' : 'Serviço'),
+          item.category || null,
+          item.item_type,
+          item.unit || 'UN',
+          item.unit_cost || null,
+          item.default_price || 0,
+          nowIso
+        ]
+      );
+
+      // Insert required materials relations if any
+      if (item.required_materials && item.required_materials.length > 0) {
+        dbInstance.run(`DELETE FROM service_required_materials WHERE service_id = ?`, [item.id]);
+
+        for (const req of item.required_materials) {
+          const reqId = `srm-${item.id}-${req.material_id || Math.random().toString(36).substring(2, 8)}`;
+          dbInstance.run(
+            `INSERT INTO service_required_materials (id, service_id, material_id, material_name, quantity, unit, default_price, is_optional, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              reqId,
+              item.id,
+              req.material_id || null,
+              req.material_name,
+              req.quantity || 1,
+              req.unit || 'UN',
+              req.default_price || 0,
+              req.is_optional ? 1 : 0,
+              req.notes || null
+            ]
+          );
+        }
+      }
+    }
+
+    dbInstance.run('COMMIT;');
+    saveDatabase();
+    console.log(`[DATABASE] Catálogo padrão com ${DEFAULT_CATALOG.length} itens semeado com sucesso!`);
+  } catch (err) {
+    try { dbInstance.run('ROLLBACK;'); } catch {}
+    console.error('[DATABASE] Erro ao semear catálogo padrão:', err);
   }
 }
 
-function seedInitialData(db: Database) {
-  const now = new Date().toISOString();
-
-  // 1. Companies
-  const c1 = 'comp-1';
-  const c2 = 'comp-2';
-  db.run(`INSERT INTO companies (id, name, cnpj, email, phone, address, city, state, logo_url, primary_color, active, created_at) VALUES
-    (?, 'CAST Engenharia & Soluções', '12.345.678/0001-90', 'contato@castengenharia.com.br', '(11) 98765-4321', 'Av. Paulista, 1500 - Bela Vista', 'São Paulo', 'SP', '', '#2563eb', 1, ?),
-    (?, 'Apex Climatização & Elétrica', '98.765.432/0001-10', 'financeiro@apexclima.com.br', '(21) 97654-3210', 'Rua Visconde de Pirajá, 300 - Ipanema', 'Rio de Janeiro', 'RJ', '', '#059669', 1, ?)`,
-    [c1, now, c2, now]
-  );
-
-  // 2. Users (DEV, ADM, GERENTE, SUPERVISOR, TÉCNICO)
-  db.run(`INSERT INTO users (id, company_id, name, email, password, role, active, created_at) VALUES
-    ('usr-dev-ale', NULL, 'Desenvolvedor Master (Ale)', 'ale11062@gmail.com', 'cast.2468', 'DEV', 1, ?),
-    ('usr-dev', NULL, 'Administrador Global DEV', 'dev@castquote.com', 'dev123', 'DEV', 1, ?),
-    ('usr-adm', ?, 'Renato Mendonça (ADM)', 'adm@castengenharia.com.br', 'adm123', 'ADM', 1, ?),
-    ('usr-ger', ?, 'Camila Duarte (Gerente)', 'gerente@castengenharia.com.br', 'gerente123', 'GERENTE', 1, ?),
-    ('usr-sup', ?, 'Lucas Alcantara (Supervisor)', 'supervisor@castengenharia.com.br', 'super123', 'SUPERVISOR', 1, ?),
-    ('usr-tec', ?, 'Carlos Silva (Técnico)', 'tecnico@castengenharia.com.br', 'tec123', 'TÉCNICO', 1, ?)`,
-    [now, now, c1, now, c1, now, c1, now, c1, now]
-  );
-
-  // 3. Technicians
-  const t1 = 'tec-1';
-  const t2 = 'tec-2';
-  const t3 = 'tec-3';
-  db.run(`INSERT INTO technicians (id, company_id, name, phone, email, role_title, active, created_at) VALUES
-    (?, ?, 'Carlos Eduardo Silva', '(11) 98111-2233', 'carlos.silva@castengenharia.com.br', 'Técnico Especialista em CFTV & Redes', 1, ?),
-    (?, ?, 'Marcos Vinícius Souza', '(11) 97222-3344', 'marcos.souza@castengenharia.com.br', 'Eletricista Instalador Industrial', 1, ?),
-    (?, ?, 'Juliana Ferreira Rocha', '(11) 96333-4455', 'juliana.rocha@castengenharia.com.br', 'Técnica em Climatização e Automação', 1, ?)`,
-    [t1, c1, now, t2, c1, now, t3, c1, now]
-  );
-
-  // 4. Clients
-  const cl1 = 'cli-1';
-  const cl2 = 'cli-2';
-  const cl3 = 'cli-3';
-  db.run(`INSERT INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at) VALUES
-    (?, ?, 'TechCorp Brasil Tecnologia S.A.', '33.444.555/0001-22', 'facilities@techcorp.com.br', '(11) 3210-9000', 'Rua Funchal, 418 - Vila Olímpia', 'São Paulo', 'SP', 'Acesso pela portaria 2, solicitar crachá de prestador.', ?),
-    (?, ?, 'Condomínio Residencial Jardim das Flores', '45.678.910/0001-33', 'sindico@jardimdasflores.com.br', '(11) 95544-3322', 'Rua das Camélias, 210 - Moema', 'São Paulo', 'SP', 'Horário de serviço permitido: 08:00 às 17:00 de seg a sex.', ?),
-    (?, ?, 'Dr. Fernando Albuquerque', '123.456.789-00', 'dr.fernando@clinicaalbuquerque.med.br', '(11) 99887-7665', 'Alameda Santos, 1800 - Cerqueira César', 'São Paulo', 'SP', 'Consultório médico no 8º andar.', ?)`,
-    [cl1, c1, now, cl2, c1, now, cl3, c1, now]
-  );
-
-  // 5. Sample Vertical SVG base64 Photos (strictly vertical: 600 width x 900 height = 2:3 aspect ratio)
-  const verticalSvg1 = createVerticalPhotoSvg('Inspeção Painel Elétrico', '#1e3a8a', '#3b82f6');
-  const verticalSvg2 = createVerticalPhotoSvg('Instalação Câmera 4K', '#065f46', '#10b981');
-  const verticalSvg3 = createVerticalPhotoSvg('Cabeamento Estruturado', '#7c2d12', '#f97316');
-  const verticalSvg4 = createVerticalPhotoSvg('Quadro Distribuição', '#581c87', '#a855f7');
-  const verticalSvg5 = createVerticalPhotoSvg('Rack Servidores 42U', '#1e293b', '#64748b');
-  const verticalSvg6 = createVerticalPhotoSvg('Equipamento Finalizado', '#0f766e', '#14b8a6');
-
-  // 6. Quotes
-  const q1 = 'quote-1001';
-  db.run(`INSERT INTO quotes (id, company_id, quote_number, client_id, technician_id, created_by, date, validity_date, status, description, address, subtotal, discount, addition, total, notes, created_at, updated_at) VALUES
-    (?, ?, 1001, ?, ?, 'usr-adm', '2026-09-02', '2026-09-17', 'Aprovado', 'Modernização completa do sistema de CFTV IP e controle de acesso biométrico.', 'Rua Funchal, 418 - Vila Olímpia, São Paulo - SP', 7450.00, 250.00, 0.00, 7200.00, 'Garantia de 12 meses nos equipamentos e 90 dias na mão de obra.', ?, ?)`,
-    [q1, c1, cl1, t1, now, now]
-  );
-
-  // Quote Items
-  db.run(`INSERT INTO quote_items (id, quote_id, item_type, description, quantity, unit, unit_price, total_price) VALUES
-    ('qi-1', ?, 'material', 'Câmera Dome IP 4K com Visão Noturna IR 30m', 6, 'UN', 450.00, 2700.00),
-    ('qi-2', ?, 'material', 'NVR 16 Canais PoE 4K com HD de 4TB Surveillance', 1, 'UN', 1850.00, 1850.00),
-    ('qi-3', ?, 'material', 'Cabo de Rede UTP Cat6 100% Cobre Homologado (caixa 305m)', 1, 'CX', 580.00, 580.00),
-    ('qi-4', ?, 'servico', 'Instalação física, conectorização e fusão de cabos de rede', 6, 'PT', 120.00, 720.00),
-    ('qi-5', ?, 'servico', 'Configuração de NVR, portas de roteador e aplicativo mobile CAST Quote', 1, 'SV', 1600.00, 1600.00)`,
-    [q1, q1, q1, q1, q1]
-  );
-
-  // Quote Photos (all strictly vertical: 600x900)
-  db.run(`INSERT INTO quote_photos (id, quote_id, company_id, url, caption, width, height, created_at) VALUES
-    ('qp-1', ?, ?, ?, 'Foto 1 - Ponto de fixação da câmera no teto', 600, 900, ?),
-    ('qp-2', ?, ?, ?, 'Foto 2 - Rack principal de telecomunicações', 600, 900, ?),
-    ('qp-3', ?, ?, ?, 'Foto 3 - Tubulação vertical para passagem de cabos', 600, 900, ?)`,
-    [q1, c1, verticalSvg1, now, q1, c1, verticalSvg2, now, q1, c1, verticalSvg3, now]
-  );
-
-  // 7. Work Orders
-  const wo1 = 'wo-2001';
-  db.run(`INSERT INTO work_orders (id, company_id, order_number, quote_id, client_id, technician_id, created_by, date, status, service_description, address, notes, subtotal, discount, addition, total, created_at, updated_at) VALUES
-    (?, ?, 2001, ?, ?, ?, 'usr-sup', '2026-09-03', 'Em Andamento', 'Execução da instalação de infraestrutura elétrica e ligação de grupo gerador.', 'Alameda Santos, 1800 - Cerqueira César, São Paulo - SP', 'Necessário desligamento programado do quadro geral às 14h com aprovação do síndico.', 3980.00, 100.00, 120.00, 4000.00, ?, ?)`,
-    [wo1, c1, q1, cl3, t2, now, now]
-  );
-
-  // Work Order Items
-  db.run(`INSERT INTO work_order_items (id, work_order_id, item_type, description, quantity, unit, unit_price, total_price) VALUES
-    ('woi-1', ?, 'servico', 'Passagem de cabos de força 16mm² antichama', 45, 'MT', 28.00, 1260.00),
-    ('woi-2', ?, 'material', 'Disjuntor Caixa Moldada Tripolar 125A Curva C', 2, 'UN', 420.00, 840.00),
-    ('woi-3', ?, 'material', 'Barramento de Cobre Eletrolítico 150A com Isoladores', 1, 'JG', 380.00, 380.00),
-    ('woi-4', ?, 'servico', 'Comissionamento e teste de carga em banco resistivo', 1, 'SV', 1500.00, 1500.00)`,
-    [wo1, wo1, wo1, wo1]
-  );
-
-  // Work Order Photos (6 vertical photos to demonstrate 5-per-row + 6th on second line!)
-  db.run(`INSERT INTO work_order_photos (id, work_order_id, company_id, url, caption, width, height, created_at) VALUES
-    ('wop-1', ?, ?, ?, 'Foto 1 - Vista geral do painel de entrada', 600, 900, ?),
-    ('wop-2', ?, ?, ?, 'Foto 2 - Barramento antes da intervenção', 600, 900, ?),
-    ('wop-3', ?, ?, ?, 'Foto 3 - Termografia dos pontos de conexão', 600, 900, ?),
-    ('wop-4', ?, ?, ?, 'Foto 4 - Disjuntores instalados e identificados', 600, 900, ?),
-    ('wop-5', ?, ?, ?, 'Foto 5 - Cabos organizados com anilhas e espaguete', 600, 900, ?),
-    ('wop-6', ?, ?, ?, 'Foto 6 - Teste de tensão e medição de isolação', 600, 900, ?)`,
-    [
-      wo1, c1, verticalSvg1, now,
-      wo1, c1, verticalSvg2, now,
-      wo1, c1, verticalSvg3, now,
-      wo1, c1, verticalSvg4, now,
-      wo1, c1, verticalSvg5, now,
-      wo1, c1, verticalSvg6, now
-    ]
-  );
-
-  // Notifications
-  db.run(`INSERT INTO notifications (id, company_id, title, message, channel, recipient, status, created_at) VALUES
-    ('notif-1', ?, 'Orçamento #1001 Aprovado!', 'O cliente TechCorp Brasil aprovou o orçamento no valor de R$ 7.200,00.', 'whatsapp', '(11) 3210-9000', 'sent', ?),
-    ('notif-2', ?, 'Ordem de Serviço #2001 Iniciada', 'Técnico Marcos Vinícius iniciou os trabalhos em Dr. Fernando Albuquerque.', 'email', 'facilities@techcorp.com.br', 'sent', ?)`,
-    [c1, now, c1, now]
-  );
+/**
+ * Limpa todo o banco de dados preservando estritamente apenas as contas de DEV.
+ */
+export function cleanDatabaseComplete() {
+  if (!dbInstance) return;
+  try {
+    dbInstance.run('BEGIN TRANSACTION;');
+    dbInstance.run('DELETE FROM quotes;');
+    dbInstance.run('DELETE FROM quote_items;');
+    dbInstance.run('DELETE FROM quote_photos;');
+    dbInstance.run('DELETE FROM work_orders;');
+    dbInstance.run('DELETE FROM work_order_items;');
+    dbInstance.run('DELETE FROM work_order_photos;');
+    dbInstance.run('DELETE FROM clients;');
+    dbInstance.run('DELETE FROM services;');
+    dbInstance.run('DELETE FROM service_required_materials;');
+    dbInstance.run('DELETE FROM technicians;');
+    dbInstance.run('DELETE FROM companies;');
+    dbInstance.run('DELETE FROM notifications;');
+    dbInstance.run('DELETE FROM whatsapp_settings;');
+    dbInstance.run('DELETE FROM drive_settings;');
+    dbInstance.run("DELETE FROM users WHERE role != 'DEV';");
+    dbInstance.run("UPDATE users SET company_id = NULL WHERE role = 'DEV';");
+    dbInstance.run('COMMIT;');
+    saveDatabase();
+    console.log('[DATABASE] Banco de dados limpo com sucesso! Apenas os cadastros de DEV foram mantidos.');
+  } catch (err) {
+    try { dbInstance.run('ROLLBACK;'); } catch {}
+    console.error('[DATABASE] Erro ao limpar banco de dados:', err);
+  }
 }
 
-function createVerticalPhotoSvg(title: string, color1: string, color2: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
-    <defs>
-      <linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="${color1}"/>
-        <stop offset="100%" stop-color="${color2}"/>
-      </linearGradient>
-    </defs>
-    <rect width="600" height="900" fill="url(#g)"/>
-    <rect x="20" y="20" width="560" height="860" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="10 10" opacity="0.4"/>
-    <circle cx="300" cy="380" r="100" fill="#ffffff" opacity="0.15"/>
-    <path d="M250 400 L285 435 L350 355" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="300" y="540" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">REGISTRO TÉCNICO CAST</text>
-    <text x="300" y="590" font-family="Arial, sans-serif" font-size="22" fill="#e2e8f0" text-anchor="middle">${title}</text>
-    <rect x="180" y="640" width="240" height="44" rx="22" fill="#000000" opacity="0.3"/>
-    <text x="300" y="669" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#38bdf8" text-anchor="middle">ORIENTAÇÃO VERTICAL 2:3</text>
-    <text x="300" y="830" font-family="Arial, sans-serif" font-size="16" fill="#cbd5e1" text-anchor="middle">Data: 04/09/2026 • Localização Registrada</text>
-  </svg>`;
-
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+/**
+ * Limpa todos os serviços e materiais do catálogo
+ */
+export function clearCatalog(companyId?: string) {
+  if (!dbInstance) return;
+  try {
+    dbInstance.run('BEGIN TRANSACTION;');
+    if (companyId && companyId !== 'ALL') {
+      dbInstance.run(
+        `DELETE FROM service_required_materials WHERE service_id IN (SELECT id FROM services WHERE company_id = ?)`,
+        [companyId]
+      );
+      dbInstance.run(`DELETE FROM services WHERE company_id = ?`, [companyId]);
+    } else {
+      dbInstance.run('DELETE FROM service_required_materials;');
+      dbInstance.run('DELETE FROM services;');
+    }
+    dbInstance.run('COMMIT;');
+    saveDatabase();
+    console.log(`[DATABASE] Catálogo de serviços e materiais limpo com sucesso! (Filtro: ${companyId || 'TODOS'})`);
+  } catch (err) {
+    try { dbInstance.run('ROLLBACK;'); } catch {}
+    console.error('[DATABASE] Erro ao limpar catálogo:', err);
+    throw err;
+  }
 }
+

@@ -74,13 +74,27 @@ export const DemoDashboard: React.FC<DemoDashboardProps> = ({
   const [orders, setOrders] = useState<WorkOrder[]>(initialDemo?.orders || []);
   const [loadingStats, setLoadingStats] = useState(!initialDemo);
 
+  const prevCompanyIdRef = React.useRef(activeCompany?.id);
+  const isFirstMountRef = React.useRef(true);
+
   useEffect(() => {
-    const snap = getInitialDemoSnapshot();
-    if (snap) {
-      setStats(snap.stats);
-      setQuotes(snap.quotes || []);
-      setOrders(snap.orders || []);
-      setLoadingStats(false);
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      loadDemoData();
+      return;
+    }
+
+    if (prevCompanyIdRef.current !== activeCompany?.id) {
+      prevCompanyIdRef.current = activeCompany?.id;
+      const snap = getInitialDemoSnapshot();
+      if (snap) {
+        setStats(snap.stats);
+        setQuotes(snap.quotes || []);
+        setOrders(snap.orders || []);
+        setLoadingStats(false);
+      } else {
+        setLoadingStats(true);
+      }
     }
     loadDemoData();
   }, [activeCompany?.id]);

@@ -115,32 +115,55 @@ html, body {
 }
 
 /* ==========================================================================
-   DIRETRIZ DE TIPOGRAFIA: CAIXA ALTA GLOBAL NO APP
-   - Todo o sistema (botões, menus, tabelas, textos, inputs) em MAIÚSCULAS
-   - E-mails OBRIGATÓRIOS em letras minúsculas
-   - Senhas mantêm maiúsculas e minúsculas como digitadas (ambas permitidas)
+   DIRETRIZ DE TIPOGRAFIA:
+   - Todo o sistema (botões, menus, tabelas, textos, inputs padrão) em MAIÚSCULAS
+   - E-mails OBRIGATORIAMENTE em letras minúsculas
+   - Senhas mantêm maiúsculas e minúsculas como digitadas (aceita ambas)
    ========================================================================== */
 body, button, select, label, th, td, h1, h2, h3, h4, h5, h6, nav, header {
   text-transform: uppercase;
 }
 
-/* Inputs de texto e áreas de texto padrão em maiúsculas */
-input:not([type="email"]):not([type="password"]):not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+/* Inputs de texto e áreas de texto padrão em maiúsculas (excluindo senhas, emails e controles especiais) */
+input:not([type="email"]):not([type="password"]):not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([data-password="true"]):not(.password-field):not(.mixed-case-field):not([name*="password" i]):not([name*="senha" i]):not([id*="password" i]):not([id*="senha" i]):not([placeholder*="senha" i]):not([placeholder*="password" i]),
 textarea {
   text-transform: uppercase;
 }
 
 /* E-MAILS OBRIGATORIAMENTE EM MINÚSCULAS */
 input[type="email"],
+input.email-field,
+input.lowercase-field,
+input[name*="email" i],
+input[id*="email" i],
 .email-text,
 .lowercase-field,
-.user-email-display {
+.user-email-display,
+.user-email,
+.client-email,
+.tech-email,
+[data-email],
+.lowercase,
+span.lowercase,
+div.lowercase,
+td.lowercase,
+p.lowercase {
   text-transform: lowercase !important;
 }
 
-/* SENHAS MANTÊM CAIXA MISTA (MAIÚSCULAS E MINÚSCULAS) */
+/* SENHAS MANTÊM CAIXA MISTA (ACEITA E EXIBE MAIÚSCULAS E MINÚSCULAS COMO DIGITADAS) */
 input[type="password"],
+input[data-password="true"],
+input.password-field,
+input.mixed-case-field,
+input[name*="password" i],
+input[name*="senha" i],
+input[id*="password" i],
+input[id*="senha" i],
+input[placeholder*="senha" i],
+input[placeholder*="password" i],
 .password-text,
+.password-field,
 .mixed-case-field {
   text-transform: none !important;
 }

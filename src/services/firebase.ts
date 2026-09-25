@@ -41,6 +41,7 @@ import {
   WorkOrder,
   Client,
   Technician,
+  ServiceItem,
   DashboardStats
 } from '../types';
 
@@ -52,10 +53,13 @@ export const db: Firestore = getFirestore(app);
 export const auth: Auth = getAuth(app);
 export const storage: FirebaseStorage = getStorage(app);
 
-// Helper: execute promise with timeout to prevent blocking when Firestore is unreachable or offline
-export function withTimeout<T>(promise: Promise<T>, ms: number = 1500, fallback: T): Promise<T> {
+// Helper: execute promise with timeout to prevent indefinite hanging while allowing sufficient time for cloud round-trips
+export function withTimeout<T>(promise: Promise<T>, ms: number = 10000, fallback: T): Promise<T> {
   return Promise.race([
-    promise,
+    promise.catch((err) => {
+      console.warn('Firestore operação interceptada (fallback utilizado):', err);
+      return fallback;
+    }),
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))
   ]);
 }
@@ -64,73 +68,64 @@ export function withTimeout<T>(promise: Promise<T>, ms: number = 1500, fallback:
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
     const probe = getDocFromServer(doc(db, '__health__', 'check'));
-    await withTimeout(probe, 1000, null);
+    await withTimeout(probe, 4000, null);
     return true;
   } catch (err: any) {
     return false;
   }
 }
 
-// Seed initial baseline company and users if Firestore is completely empty
+// Ensure DEV user exists in Firestore if users collection is empty
 export async function initializeFirestoreDefaults(): Promise<void> {
   try {
-    const seedTask = (async () => {
-      const companiesSnapshot = await getDocs(collection(db, 'companies'));
-      if (companiesSnapshot.empty) {
-        console.log('Inicializando dados padrão no Cloud Firestore...');
-
-        // 1. Empresa Master CAST
-        const defaultCompany: Company = {
-          id: 'comp-master-cast',
-          name: 'CAST Quote Engenharia & Serviços',
-          cnpj: '12.345.678/0001-90',
-          email: 'contato@castquote.com.br',
-          phone: '(11) 98765-4321',
-          address: 'Av. Paulista, 1000 - Bela Vista',
-          city: 'São Paulo',
-          state: 'SP',
-          logo_url: '',
-          primary_color: '#2563eb',
-          active: 1,
-          created_at: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'companies', defaultCompany.id), defaultCompany);
-
-        // 2. Usuário Desenvolvedor Independente (Master DEV)
-        const devUser: User = {
-          id: 'user-dev-master',
-          company_id: '',
-          name: 'Dev Master (Administrador Global)',
-          email: 'dev@castquote.com',
-          role: 'DEV',
-          active: 1,
-          created_at: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'users', devUser.id), {
-          ...devUser,
-          password_hash: 'dev123'
-        });
-
-        // 3. Usuário Administrador da Empresa
-        const adminUser: User = {
-          id: 'user-admin-empresa',
-          company_id: defaultCompany.id,
-          name: 'Carlos Gerente de Operações',
-          email: 'adm@castengenharia.com.br',
-          role: 'ADM',
-          active: 1,
-          created_at: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'users', adminUser.id), {
-          ...adminUser,
-          password_hash: 'adm123'
-        });
-      }
-    })();
-
-    await withTimeout(seedTask, 1500, undefined);
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    const devs = usersSnapshot.docs.filter((d) => (d.data() as User)?.role === 'DEV');
+    if (devs.length === 0) {
+      console.log('Inicializando usuário DEV no Cloud Firestore...');
+      const devMaster: User = {
+        id: 'usr-dev-cliente',
+        company_id: '',
+        name: 'Administrador Master DEV',
+        email: 'clientesiptv.2468@gmail.com',
+        role: 'DEV',
+        active: 1,
+        created_at: new Date().toISOString()
+      };
+      await setDoc(doc(db, 'users', devMaster.id), {
+        ...devMaster,
+        password_hash: 'cast.2468'
+      });
+    }
   } catch (err) {
     console.warn('Verificação de inicialização do Firestore:', err);
+  }
+}
+
+// Limpeza completa no Firestore mantendo apenas contas DEV
+export async function cleanFirestoreDatabaseComplete(): Promise<void> {
+  const collectionsToWipe = ['quotes', 'work_orders', 'clients', 'services', 'technicians', 'companies', 'notifications'];
+  for (const collName of collectionsToWipe) {
+    try {
+      const snap = await getDocs(collection(db, collName));
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    } catch (e) {
+      console.warn(`Erro ao limpar coleção ${collName} no Firestore:`, e);
+    }
+  }
+
+  // Limpar usuários que não são DEV
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const d of usersSnap.docs) {
+      const data = d.data() as User;
+      if (data && data.role !== 'DEV') {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao limpar usuários não-DEV no Firestore:', e);
   }
 }
 
@@ -154,15 +149,10 @@ export const firebaseCompanies = {
           companies.push(docSnap.data() as Company);
         });
 
-        // Fallback: se estiver vazio, tenta inicializar padrão em background sem bloquear
-        if (companies.length === 0) {
-          initializeFirestoreDefaults().catch(() => {});
-        }
-
         return companies.filter((c) => c.active !== 0);
       })();
 
-      return await withTimeout(fetchPromise, 1200, []);
+      return await withTimeout(fetchPromise, 10000, []);
     } catch (err) {
       console.warn('Firestore offline ou inacessível ao buscar empresas');
       return [];
@@ -553,19 +543,31 @@ export const firebaseClients = {
       notes: client.notes || '',
       created_at: new Date().toISOString()
     };
-    await withTimeout(setDoc(doc(db, 'clients', id), newClient), 2500, null);
+    try {
+      await withTimeout(setDoc(doc(db, 'clients', id), newClient), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao salvar cliente no Firestore:', err);
+    }
     return newClient;
   },
 
   async update(id: string, updates: Partial<Client>): Promise<Client> {
     const refDoc = doc(db, 'clients', id);
     const merged = { ...updates, id } as Client;
-    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
+    try {
+      await withTimeout(setDoc(refDoc, merged, { merge: true }), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao atualizar cliente no Firestore:', err);
+    }
     return merged;
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await withTimeout(deleteDoc(doc(db, 'clients', id)), 1500, null);
+    try {
+      await withTimeout(deleteDoc(doc(db, 'clients', id)), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao deletar cliente no Firestore:', err);
+    }
     return { success: true };
   }
 };
@@ -581,7 +583,7 @@ export const firebaseTechnicians = {
       if (companyId && userRole !== 'DEV') {
         q = query(coll, where('company_id', '==', companyId));
       }
-      const snap = await withTimeout(getDocs(q), 3000, null);
+      const snap = await withTimeout(getDocs(q), 10000, null);
       if (!snap) return [];
       const techs: Technician[] = [];
       snap.forEach((docSnap) => techs.push(docSnap.data() as Technician));
@@ -604,19 +606,96 @@ export const firebaseTechnicians = {
       active: tech.active ?? 1,
       created_at: new Date().toISOString()
     };
-    await withTimeout(setDoc(doc(db, 'technicians', id), newTech), 1500, null);
+    try {
+      await withTimeout(setDoc(doc(db, 'technicians', id), newTech), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao salvar técnico no Firestore:', err);
+    }
     return newTech;
   },
 
   async update(id: string, updates: Partial<Technician>): Promise<Technician> {
     const refDoc = doc(db, 'technicians', id);
     const merged = { ...updates, id } as Technician;
-    await withTimeout(setDoc(refDoc, merged, { merge: true }), 1500, null);
+    try {
+      await withTimeout(setDoc(refDoc, merged, { merge: true }), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao atualizar técnico no Firestore:', err);
+    }
     return merged;
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
-    await withTimeout(deleteDoc(doc(db, 'technicians', id)), 1500, null);
+    try {
+      await withTimeout(deleteDoc(doc(db, 'technicians', id)), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao deletar técnico no Firestore:', err);
+    }
+    return { success: true };
+  }
+};
+
+// ============================================================================
+// 6.1 OPERAÇÕES CRUD DE SERVIÇOS E MATERIAIS (Catálogo Cloud Firestore)
+// ============================================================================
+export const firebaseServices = {
+  async getAll(companyId?: string, userRole?: string): Promise<ServiceItem[]> {
+    try {
+      const coll = collection(db, 'services');
+      let q = query(coll);
+      if (companyId && userRole !== 'DEV') {
+        q = query(coll, where('company_id', '==', companyId));
+      }
+      const snap = await withTimeout(getDocs(q), 10000, null);
+      if (!snap) return [];
+      const srvs: ServiceItem[] = [];
+      snap.forEach((docSnap) => srvs.push(docSnap.data() as ServiceItem));
+      return srvs;
+    } catch (err) {
+      console.error('Erro ao buscar serviços no Firestore:', err);
+      return [];
+    }
+  },
+
+  async create(srv: Partial<ServiceItem>): Promise<ServiceItem> {
+    const id = srv.id || `srv-${Date.now()}`;
+    const newService: ServiceItem = {
+      id,
+      company_id: srv.company_id || '',
+      name: srv.name || '',
+      description: srv.description || '',
+      category: srv.category || 'Serviço',
+      item_type: srv.item_type || 'servico',
+      unit: srv.unit || 'UN',
+      default_price: Number(srv.default_price) || 0,
+      active: srv.active ?? 1,
+      created_at: new Date().toISOString()
+    };
+    try {
+      await withTimeout(setDoc(doc(db, 'services', id), newService), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao salvar serviço no Firestore:', err);
+    }
+    return newService;
+  },
+
+  async update(id: string, updates: Partial<ServiceItem>): Promise<ServiceItem> {
+    const refDoc = doc(db, 'services', id);
+    const merged = { ...updates, id } as ServiceItem;
+    try {
+      await withTimeout(setDoc(refDoc, merged, { merge: true }), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao atualizar serviço no Firestore:', err);
+    }
+    return merged;
+  },
+
+  async delete(id: string): Promise<{ success: boolean }> {
+    try {
+      await withTimeout(deleteDoc(doc(db, 'services', id)), 10000, null);
+    } catch (err) {
+      console.warn('Erro ao deletar serviço no Firestore:', err);
+    }
     return { success: true };
   }
 };
@@ -638,7 +717,10 @@ export const firebaseUsers = {
       snap.forEach((docSnap) => {
         const u = docSnap.data() as User;
         if (u && u.role !== 'DEV') {
-          users.push(u);
+          users.push({
+            ...u,
+            email: (u.email || '').trim().toLowerCase()
+          });
         }
       });
       return users;
@@ -650,11 +732,12 @@ export const firebaseUsers = {
 
   async create(user: Partial<User>): Promise<User> {
     const id = user.id || `user-${Date.now()}`;
+    const cleanEmail = (user.email || '').trim().toLowerCase();
     const newUser: User = {
       id,
       company_id: user.company_id || '',
-      name: user.name || '',
-      email: user.email || '',
+      name: user.name ? user.name.trim() : '',
+      email: cleanEmail,
       role: user.role || 'TÉCNICO',
       active: user.active ?? 1,
       created_at: new Date().toISOString()
@@ -673,13 +756,20 @@ export const firebaseUsers = {
   async update(id: string, updates: Partial<User>): Promise<User> {
     const refDoc = doc(db, 'users', id);
     const dataToSave: any = { ...updates, id };
+    if (updates.email) {
+      dataToSave.email = updates.email.trim().toLowerCase();
+    }
     if ((updates as any).password) {
       dataToSave.password = (updates as any).password;
       dataToSave.password_hash = (updates as any).password;
     }
     await withTimeout(setDoc(refDoc, dataToSave, { merge: true }), 1500, null);
     const snap = await withTimeout(getDoc(refDoc), 1500, null);
-    return (snap && snap.exists() ? (snap.data() as User) : ({ ...updates, id } as User));
+    const result = snap && snap.exists() ? (snap.data() as User) : ({ ...updates, id } as User);
+    return {
+      ...result,
+      email: (result.email || '').trim().toLowerCase()
+    };
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
@@ -787,6 +877,39 @@ export const firebaseMedia = {
   }
 };
 
+// ============================================================================
+// 9. CONFIGURAÇÕES PERSISTENTES GLOBAIS (Google Drive & Parâmetros em Nuvem)
+// ============================================================================
+export const firebaseSettings = {
+  async getDriveSettings(): Promise<any | null> {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, 'app_settings', 'google_drive')), 8000, null);
+      if (snap && snap.exists()) return snap.data();
+      return null;
+    } catch {
+      return null;
+    }
+  },
+  async saveDriveSettings(settings: any): Promise<void> {
+    try {
+      await withTimeout(
+        setDoc(
+          doc(db, 'app_settings', 'google_drive'),
+          {
+            ...settings,
+            updated_at: new Date().toISOString()
+          },
+          { merge: true }
+        ),
+        8000,
+        null
+      );
+    } catch (err) {
+      console.warn('Erro ao salvar configurações do Drive no Firestore:', err);
+    }
+  }
+};
+
 // Export consolidated Firebase service
 export const firebaseService = {
   app,
@@ -795,11 +918,14 @@ export const firebaseService = {
   storage,
   testConnection: testFirestoreConnection,
   initDefaults: initializeFirestoreDefaults,
+  cleanDatabase: cleanFirestoreDatabaseComplete,
   companies: firebaseCompanies,
   quotes: firebaseQuotes,
   workOrders: firebaseWorkOrders,
   clients: firebaseClients,
   technicians: firebaseTechnicians,
+  services: firebaseServices,
   users: firebaseUsers,
-  media: firebaseMedia
+  media: firebaseMedia,
+  settings: firebaseSettings
 };

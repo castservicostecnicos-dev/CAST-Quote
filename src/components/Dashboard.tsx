@@ -68,16 +68,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [activeDevSubView, setActiveDevSubView] = useState<'overview' | 'demo'>('overview');
   const [isTrainerOpen, setIsTrainerOpen] = useState(false);
 
+  const prevKeyRef = React.useRef(cacheKey);
+  const isFirstMountRef = React.useRef(true);
+
   useEffect(() => {
-    // When company or role changes, check new cache immediately
-    const snap = getInitialSnapshot();
-    if (snap) {
-      setStats(snap.stats);
-      setRecentQuotes(snap.recentQuotes || []);
-      setRecentOrders(snap.recentOrders || []);
-      setLoading(false);
-    } else {
-      setLoading(true);
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      loadData();
+      return;
+    }
+
+    if (prevKeyRef.current !== cacheKey) {
+      prevKeyRef.current = cacheKey;
+      const snap = getInitialSnapshot();
+      if (snap) {
+        setStats(snap.stats);
+        setRecentQuotes(snap.recentQuotes || []);
+        setRecentOrders(snap.recentOrders || []);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
     }
     loadData();
   }, [activeCompany?.id, user?.role]);

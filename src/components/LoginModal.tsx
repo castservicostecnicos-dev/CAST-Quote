@@ -28,7 +28,7 @@ export const LoginModal: React.FC = () => {
         localStorage.removeItem('cast_demo_mode');
         sessionStorage.removeItem('cast_dev_simulating');
       }
-      await login(email.trim(), password.trim());
+      await login(email.trim().toLowerCase(), password.trim());
     } catch (err: any) {
       setError(err.message || 'Falha ao autenticar.');
     } finally {
@@ -76,12 +76,15 @@ export const LoginModal: React.FC = () => {
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
+                  id="login-email-input"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
                   placeholder="usuario@empresa.com.br"
-                  className="w-full rounded-xl border border-slate-300 pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  className="email-field lowercase-field w-full rounded-xl border border-slate-300 pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 />
               </div>
             </div>
@@ -93,12 +96,16 @@ export const LoginModal: React.FC = () => {
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
+                  id="login-password-input"
+                  name="password"
+                  data-password="true"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-300 pl-10 pr-10 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  className="password-field mixed-case-field w-full rounded-xl border border-slate-300 pl-10 pr-10 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 />
                 <button
                   type="button"

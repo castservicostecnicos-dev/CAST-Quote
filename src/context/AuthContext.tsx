@@ -8,6 +8,8 @@ interface AuthContextType {
   activeCompany: Company | null;
   companies: Company[];
   token: string | null;
+  authLoading: boolean;
+  isBackendWakingUp: boolean;
   brandColor: string;
   updateBrandColor: (color: string) => Promise<void>;
   updateCompanyBranding: (color: string, logoUrl?: string, storagePath?: string) => Promise<void>;
@@ -62,6 +64,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return localStorage.getItem('cast_token');
   });
 
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isBackendWakingUp, setIsBackendWakingUp] = useState<boolean>(false);
+
   const [companies, setCompanies] = useState<Company[]>(() => api.getCachedCompanies());
 
   // Purge any stale demo flags for real client accounts on boot
@@ -110,7 +115,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return updateCompanyBranding(newColor, activeCompany?.logo_url);
   };
 
+  const isRefreshingCompsRef = React.useRef(false);
+
   const refreshCompanies = async () => {
+    if (isRefreshingCompsRef.current) return;
+    isRefreshingCompsRef.current = true;
     try {
       if (!user) return;
       const comps = await api.getCompanies(user.role, user.company_id);
@@ -133,8 +142,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error('Failed to load companies:', err);
+    } finally {
+      isRefreshingCompsRef.current = false;
     }
   };
+
+  // Boot & Backend cold-start health-check
+  useEffect(() => {
+    let isMounted = true;
+    let wakeTimer: any = null;
+
+    const checkInitialHealth = async () => {
+      // If backend takes longer than 1.5s to respond, flag that backend is waking up (cold start / sleep)
+      wakeTimer = setTimeout(() => {
+        if (isMounted) {
+          setIsBackendWakingUp(true);
+        }
+      }, 1500);
+
+      try {
+        await fetch('/api/health', { method: 'GET' }).catch(() => null);
+      } catch (err) {
+        console.warn('Boot check error:', err);
+      } finally {
+        if (wakeTimer) clearTimeout(wakeTimer);
+        // Small delay so splash animation resolves smoothly without jarring flicker
+        setTimeout(() => {
+          if (isMounted) {
+            setIsBackendWakingUp(false);
+            setAuthLoading(false);
+          }
+        }, 600);
+      }
+    };
+
+    checkInitialHealth();
+
+    return () => {
+      isMounted = false;
+      if (wakeTimer) clearTimeout(wakeTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -149,10 +197,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('cast_dev_simulating');
     }
 
-    const data = await api.login(email, pass);
-    setUser(data.user);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = pass.trim();
+    const data = await api.login(cleanEmail, cleanPass);
+    const sanitizedUser = {
+      ...data.user,
+      email: (data.user?.email || cleanEmail).trim().toLowerCase()
+    };
+    setUser(sanitizedUser);
     setToken(data.token);
-    localStorage.setItem('cast_user', JSON.stringify(data.user));
+    localStorage.setItem('cast_user', JSON.stringify(sanitizedUser));
     localStorage.setItem('cast_token', data.token);
 
     if (data.user.role === 'DEV') {
@@ -239,6 +293,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeCompany,
         companies,
         token,
+        authLoading,
+        isBackendWakingUp,
         brandColor,
         updateBrandColor,
         updateCompanyBranding,

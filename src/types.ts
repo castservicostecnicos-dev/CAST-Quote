@@ -60,6 +60,38 @@ export interface Client {
   created_at: string;
 }
 
+export interface ServiceRequiredMaterial {
+  id?: string;
+  service_id?: string;
+  material_id?: string;
+  material_name: string;
+  quantity: number;
+  unit: string;
+  default_price: number;
+  is_optional?: number;
+  notes?: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  company_id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  subcategory?: string;
+  item_type: 'servico' | 'material';
+  unit: string;
+  purchase_unit?: string;
+  consumption_unit?: string;
+  package_quantity?: string | number;
+  unit_cost?: number;
+  default_price: number;
+  active: number;
+  created_at: string;
+  company_name?: string;
+  required_materials?: ServiceRequiredMaterial[];
+}
+
 export type QuoteStatus = 'Rascunho' | 'Enviado' | 'Aprovado' | 'Recusado';
 
 export interface QuoteItem {

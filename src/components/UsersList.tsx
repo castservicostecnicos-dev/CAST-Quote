@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Shield, Mail, Building, Key } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Shield, Mail, Building, Key, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { User, UserRole, Company } from '../types';
@@ -26,6 +26,7 @@ export const UsersList: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('SUPERVISOR');
   const [targetCompanyId, setTargetCompanyId] = useState(activeCompany?.id || '');
   const [active, setActive] = useState(true);
@@ -246,7 +247,7 @@ export const UsersList: React.FC = () => {
               <div className="space-y-1.5 text-xs text-slate-600 pt-1 border-t border-slate-100">
                 <div className="flex items-center gap-2">
                   <Mail className="w-3.5 h-3.5 text-slate-400 flex-none" />
-                  <span className="truncate">{u.email}</span>
+                  <span className="truncate lowercase">{u.email}</span>
                 </div>
                 {u.company_name && (
                   <div className="flex items-center gap-2">
@@ -296,12 +297,15 @@ export const UsersList: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">E-mail de Login *</label>
                 <input
+                  id="user-email-input"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
                   placeholder="usuario@empresa.com.br"
-                  className="w-full rounded-xl border border-slate-300 p-2 text-slate-800"
+                  className="email-field lowercase-field w-full rounded-xl border border-slate-300 p-2 text-slate-800"
                 />
               </div>
 
@@ -309,13 +313,27 @@ export const UsersList: React.FC = () => {
                 <label className="block font-semibold text-slate-700 mb-1">
                   {userToEdit ? 'Nova Senha (deixe em branco para manter a atual)' : 'Senha de Acesso *'}
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-300 p-2 text-slate-800"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    id="user-password-input"
+                    name="password"
+                    data-password="true"
+                    autoComplete="new-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="password-field mixed-case-field w-full rounded-xl border border-slate-300 p-2 pr-10 text-slate-800 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 transition"
+                    title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

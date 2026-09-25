@@ -126,6 +126,24 @@
         "created_at": { "type": "string" }
       },
       "required": ["id", "name"]
+    },
+    "ServiceItem": {
+      "title": "ServiceItem",
+      "description": "Itens de serviços e materiais cadastrados no catálogo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "company_id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "unit_price": { "type": "number" },
+        "unit": { "type": "string" },
+        "item_type": { "type": "string", "enum": ["servico", "material"] },
+        "category": { "type": "string" },
+        "active": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "name", "unit_price", "item_type"]
     }
   },
   "firestore": {
@@ -152,6 +170,10 @@
     "/technicians/{technicianId}": {
       "schema": "Technician",
       "description": "Coleção de técnicos cadastrados"
+    },
+    "/services/{serviceId}": {
+      "schema": "ServiceItem",
+      "description": "Coleção de serviços e materiais do catálogo"
     }
   }
 }

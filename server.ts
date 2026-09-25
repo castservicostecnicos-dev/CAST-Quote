@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { getDatabase, queryAll, queryOne, runSql, saveDatabase } from './server/db.ts';
+import { getDatabase, queryAll, queryOne, runSql, saveDatabase, cleanDatabaseComplete, seedDefaultServicesAndMaterials, clearCatalog } from './server/db.ts';
 
 async function startServer() {
   const app = express();
@@ -36,7 +36,7 @@ async function startServer() {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = password.trim();
 
-      const user = queryOne(`SELECT * FROM users WHERE email = ?`, [cleanEmail]);
+      const user = queryOne(`SELECT * FROM users WHERE LOWER(TRIM(email)) = ?`, [cleanEmail]);
       if (!user) {
         return res.status(401).json({ error: 'Credenciais inválidas. Verifique seu e-mail e senha.' });
       }
@@ -257,7 +257,7 @@ async function startServer() {
     try {
       const { companyId } = req.query;
       let sql = `
-        SELECT u.id, u.company_id, u.name, u.email, u.role, u.active, u.created_at, c.name as company_name
+        SELECT u.id, u.company_id, u.name, LOWER(TRIM(u.email)) as email, u.role, u.active, u.created_at, c.name as company_name
         FROM users u
         LEFT JOIN companies c ON u.company_id = c.id
         WHERE u.role != 'DEV'
@@ -286,7 +286,7 @@ async function startServer() {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = password.trim();
 
-      const existing = queryOne(`SELECT id FROM users WHERE email = ?`, [cleanEmail]);
+      const existing = queryOne(`SELECT id FROM users WHERE LOWER(TRIM(email)) = ?`, [cleanEmail]);
       if (existing) {
         return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
       }
@@ -296,10 +296,10 @@ async function startServer() {
       runSql(
         `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
-        [id, targetCompanyId, name, cleanEmail, cleanPassword, role, now]
+        [id, targetCompanyId, name.trim(), cleanEmail, cleanPassword, role, now]
       );
 
-      const created = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [id]);
+      const created = queryOne(`SELECT id, company_id, name, LOWER(TRIM(email)) as email, role, active, created_at FROM users WHERE id = ?`, [id]);
       return res.status(201).json(created);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -316,9 +316,9 @@ async function startServer() {
       const cleanPassword = password && password.trim().length > 0 ? password.trim() : null;
 
       // Check if user exists by ID or by email
-      let user = queryOne(`SELECT id, company_id, name, email, role, active FROM users WHERE id = ?`, [id]);
+      let user = queryOne(`SELECT id, company_id, name, LOWER(TRIM(email)) as email, role, active FROM users WHERE id = ?`, [id]);
       if (!user && cleanEmail) {
-        user = queryOne(`SELECT id, company_id, name, email, role, active FROM users WHERE email = ?`, [cleanEmail]);
+        user = queryOne(`SELECT id, company_id, name, LOWER(TRIM(email)) as email, role, active FROM users WHERE LOWER(TRIM(email)) = ?`, [cleanEmail]);
       }
 
       if (!user) {
@@ -328,9 +328,9 @@ async function startServer() {
         runSql(
           `INSERT INTO users (id, company_id, name, email, password, role, active, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [targetId, targetCompanyId, name, cleanEmail, cleanPassword || 'Cast123', role || 'TÉCNICO', active !== undefined ? (active ? 1 : 0) : 1, now]
+          [targetId, targetCompanyId, name ? name.trim() : 'Usuário', cleanEmail, cleanPassword || 'Cast123', role || 'TÉCNICO', active !== undefined ? (active ? 1 : 0) : 1, now]
         );
-        const created = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
+        const created = queryOne(`SELECT id, company_id, name, LOWER(TRIM(email)) as email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
         return res.json(created);
       }
 
@@ -339,16 +339,16 @@ async function startServer() {
       if (cleanPassword) {
         runSql(
           `UPDATE users SET company_id = ?, name = ?, email = ?, password = ?, role = ?, active = ? WHERE id = ?`,
-          [targetCompanyId, name, cleanEmail, cleanPassword, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
+          [targetCompanyId, name ? name.trim() : user.name, cleanEmail || user.email, cleanPassword, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
         );
       } else {
         runSql(
           `UPDATE users SET company_id = ?, name = ?, email = ?, role = ?, active = ? WHERE id = ?`,
-          [targetCompanyId, name, cleanEmail, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
+          [targetCompanyId, name ? name.trim() : user.name, cleanEmail || user.email, role, active !== undefined ? (active ? 1 : 0) : 1, targetId]
         );
       }
 
-      const updated = queryOne(`SELECT id, company_id, name, email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
+      const updated = queryOne(`SELECT id, company_id, name, LOWER(TRIM(email)) as email, role, active, created_at FROM users WHERE id = ?`, [targetId]);
       return res.json(updated);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -376,12 +376,12 @@ async function startServer() {
       const cleanPassword = password.trim();
 
       // Find user by ID or by email
-      let existing = queryOne(`SELECT id, email, name FROM users WHERE id = ?`, [id]);
+      let existing = queryOne(`SELECT id, LOWER(TRIM(email)) as email, name FROM users WHERE id = ?`, [id]);
       if (!existing && email) {
-        existing = queryOne(`SELECT id, email, name FROM users WHERE email = ?`, [email.trim().toLowerCase()]);
+        existing = queryOne(`SELECT id, LOWER(TRIM(email)) as email, name FROM users WHERE LOWER(TRIM(email)) = ?`, [email.trim().toLowerCase()]);
       }
       if (!existing) {
-        existing = queryOne(`SELECT id, email, name FROM users WHERE email = ?`, [id.trim().toLowerCase()]);
+        existing = queryOne(`SELECT id, LOWER(TRIM(email)) as email, name FROM users WHERE LOWER(TRIM(email)) = ?`, [id.trim().toLowerCase()]);
       }
 
       if (!existing) {
@@ -475,7 +475,7 @@ async function startServer() {
     try {
       const { companyId, userRole } = req.query;
       let technicians;
-      if (userRole === 'DEV' && (!companyId || companyId === 'all')) {
+      if (!companyId || companyId === 'all' || companyId === 'ALL' || userRole === 'DEV') {
         technicians = queryAll(`
           SELECT t.*, c.name as company_name
           FROM technicians t
@@ -483,13 +483,24 @@ async function startServer() {
           ORDER BY t.name ASC
         `);
       } else {
-        technicians = queryAll(`
-          SELECT t.*, c.name as company_name
-          FROM technicians t
-          LEFT JOIN companies c ON t.company_id = c.id
-          WHERE (t.company_id = ? OR ? = '' OR t.company_id IS NULL)
-          ORDER BY t.name ASC
-        `, [companyId || '', companyId || '']);
+        const isCastAlias = companyId === 'comp-cast' || companyId === 'comp-master-cast';
+        if (isCastAlias) {
+          technicians = queryAll(`
+            SELECT t.*, c.name as company_name
+            FROM technicians t
+            LEFT JOIN companies c ON t.company_id = c.id
+            WHERE (t.company_id IN ('comp-cast', 'comp-master-cast') OR t.company_id IS NULL OR t.company_id = '')
+            ORDER BY t.name ASC
+          `);
+        } else {
+          technicians = queryAll(`
+            SELECT t.*, c.name as company_name
+            FROM technicians t
+            LEFT JOIN companies c ON t.company_id = c.id
+            WHERE (t.company_id = ? OR t.company_id = 'comp-master-cast' OR t.company_id IS NULL OR t.company_id = '')
+            ORDER BY t.name ASC
+          `, [companyId]);
+        }
       }
       return res.json(technicians);
     } catch (err: any) {
@@ -588,7 +599,7 @@ async function startServer() {
     try {
       const { companyId, userRole } = req.query;
       let clients;
-      if (userRole === 'DEV' && !companyId) {
+      if (!companyId || companyId === 'all' || companyId === 'ALL' || userRole === 'DEV') {
         clients = queryAll(`
           SELECT c.*, comp.name as company_name
           FROM clients c
@@ -596,13 +607,24 @@ async function startServer() {
           ORDER BY c.name ASC
         `);
       } else {
-        clients = queryAll(`
-          SELECT c.*, comp.name as company_name
-          FROM clients c
-          LEFT JOIN companies comp ON c.company_id = comp.id
-          WHERE c.company_id = ?
-          ORDER BY c.name ASC
-        `, [companyId || '']);
+        const isCastAlias = companyId === 'comp-cast' || companyId === 'comp-master-cast';
+        if (isCastAlias) {
+          clients = queryAll(`
+            SELECT c.*, comp.name as company_name
+            FROM clients c
+            LEFT JOIN companies comp ON c.company_id = comp.id
+            WHERE (c.company_id IN ('comp-cast', 'comp-master-cast') OR c.company_id IS NULL OR c.company_id = '')
+            ORDER BY c.name ASC
+          `);
+        } else {
+          clients = queryAll(`
+            SELECT c.*, comp.name as company_name
+            FROM clients c
+            LEFT JOIN companies comp ON c.company_id = comp.id
+            WHERE (c.company_id = ? OR c.company_id = 'comp-master-cast' OR c.company_id IS NULL OR c.company_id = '')
+            ORDER BY c.name ASC
+          `, [companyId]);
+        }
       }
       return res.json(clients);
     } catch (err: any) {
@@ -612,26 +634,32 @@ async function startServer() {
 
   app.post('/api/clients', (req: Request, res: Response) => {
     try {
-      const { company_id, name, document, email, phone, address, city, state, notes } = req.body;
+      const { id: customId, company_id, name, document, email, phone, address, city, state, notes } = req.body;
       if (!name || !name.trim()) {
         return res.status(400).json({ error: 'Nome do cliente é obrigatório.' });
       }
 
       let effectiveCompanyId = company_id;
-      if (!effectiveCompanyId) {
-        const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
-        effectiveCompanyId = comp?.id || 'comp-cast';
+      const compExists = effectiveCompanyId ? queryOne(`SELECT id FROM companies WHERE id = ?`, [effectiveCompanyId]) : null;
+      if (!compExists) {
+        const defaultComp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
       }
 
-      const id = `cli-${Date.now()}`;
+      const id = customId || `cli-${Date.now()}`;
       const now = new Date().toISOString();
       runSql(
-        `INSERT INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)
+        `INSERT OR REPLACE INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, effectiveCompanyId, name.trim(), document || '', email || '', phone || '', address || '', city || '', state || '', notes || '', now]
       );
 
-      const created = queryOne(`SELECT * FROM clients WHERE id = ?`, [id]);
+      const created = queryOne(`
+        SELECT c.*, comp.name as company_name
+        FROM clients c
+        LEFT JOIN companies comp ON c.company_id = comp.id
+        WHERE c.id = ?
+      `, [id]);
       return res.status(201).json(created);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -641,14 +669,41 @@ async function startServer() {
   app.put('/api/clients/:id', (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { name, document, email, phone, address, city, state, notes } = req.body;
+      const { company_id, name, document, email, phone, address, city, state, notes } = req.body;
 
-      runSql(
-        `UPDATE clients SET name = ?, document = ?, email = ?, phone = ?, address = ?, city = ?, state = ?, notes = ? WHERE id = ?`,
-        [name, document, email, phone, address, city, state, notes, id]
-      );
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do cliente é obrigatório.' });
+      }
 
-      const updated = queryOne(`SELECT * FROM clients WHERE id = ?`, [id]);
+      const existing = queryOne(`SELECT id, company_id, created_at FROM clients WHERE id = ?`, [id]);
+      const now = new Date().toISOString();
+      
+      let effectiveCompanyId = company_id || existing?.company_id;
+      const compExists = effectiveCompanyId ? queryOne(`SELECT id FROM companies WHERE id = ?`, [effectiveCompanyId]) : null;
+      if (!compExists) {
+        const defaultComp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
+      }
+
+      if (existing) {
+        runSql(
+          `UPDATE clients SET name = ?, document = ?, email = ?, phone = ?, address = ?, city = ?, state = ?, notes = ?, company_id = ? WHERE id = ?`,
+          [name.trim(), document || '', email || '', phone || '', address || '', city || '', state || '', notes || '', effectiveCompanyId, id]
+        );
+      } else {
+        runSql(
+          `INSERT OR REPLACE INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, effectiveCompanyId, name.trim(), document || '', email || '', phone || '', address || '', city || '', state || '', notes || '', now]
+        );
+      }
+
+      const updated = queryOne(`
+        SELECT c.*, comp.name as company_name
+        FROM clients c
+        LEFT JOIN companies comp ON c.company_id = comp.id
+        WHERE c.id = ?
+      `, [id]);
       return res.json(updated);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -660,6 +715,391 @@ async function startServer() {
       const { id } = req.params;
       runSql(`DELETE FROM clients WHERE id = ?`, [id]);
       return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==========================================
+  // SERVICES & MATERIALS CATALOG ROUTES
+  // ==========================================
+  app.get('/api/services', (req: Request, res: Response) => {
+    try {
+      const { companyId, userRole, type, search } = req.query;
+      let sql = `
+        SELECT s.*, c.name as company_name
+        FROM services s
+        LEFT JOIN companies c ON s.company_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (companyId && companyId !== 'all' && companyId !== 'ALL' && userRole !== 'DEV') {
+        sql += ` AND (s.company_id = ? OR s.company_id = 'comp-master-cast' OR s.company_id IS NULL)`;
+        params.push(companyId);
+      }
+
+      if (type && (type === 'servico' || type === 'material')) {
+        sql += ` AND s.item_type = ?`;
+        params.push(type);
+      }
+
+      if (search && typeof search === 'string' && search.trim()) {
+        sql += ` AND (s.name LIKE ? OR s.description LIKE ? OR s.category LIKE ?)`;
+        const q = `%${search.trim()}%`;
+        params.push(q, q, q);
+      }
+
+      sql += ` ORDER BY s.item_type ASC, s.name ASC`;
+      const services = queryAll(sql, params);
+
+      // Fetch all required materials to attach to services
+      const allReqMaterials = queryAll(`SELECT * FROM service_required_materials ORDER BY is_optional ASC, material_name ASC`);
+      const matsMap = new Map<string, any[]>();
+      for (const m of allReqMaterials) {
+        if (!matsMap.has(m.service_id)) matsMap.set(m.service_id, []);
+        matsMap.get(m.service_id)!.push(m);
+      }
+
+      const enriched = services.map((s: any) => ({
+        ...s,
+        required_materials: matsMap.get(s.id) || []
+      }));
+
+      return res.json(enriched);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/services/:id/materials', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const materials = queryAll(
+        `SELECT * FROM service_required_materials WHERE service_id = ? ORDER BY is_optional ASC, material_name ASC`,
+        [id]
+      );
+      return res.json(materials);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/services', (req: Request, res: Response) => {
+    try {
+      const {
+        id: customId,
+        company_id,
+        name,
+        description,
+        category,
+        subcategory,
+        item_type,
+        unit,
+        purchase_unit,
+        consumption_unit,
+        package_quantity,
+        unit_cost,
+        default_price,
+        active,
+        required_materials
+      } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do serviço ou material é obrigatório.' });
+      }
+
+      let effectiveCompanyId = company_id;
+      const compExists = effectiveCompanyId ? queryOne(`SELECT id FROM companies WHERE id = ?`, [effectiveCompanyId]) : null;
+      if (!compExists) {
+        const defaultComp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
+      }
+
+      const id = customId || `srv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const now = new Date().toISOString();
+      const srvActive = active !== undefined ? (Number(active) ? 1 : 0) : 1;
+      const price = Number(default_price) || 0;
+      const parsedCost = unit_cost !== undefined && unit_cost !== null ? Number(unit_cost) : null;
+      const itemType = item_type === 'material' ? 'material' : 'servico';
+      const itemCategory = category || (itemType === 'material' ? 'Material' : 'Serviço');
+
+      runSql(
+        `INSERT OR REPLACE INTO services (id, company_id, name, description, category, subcategory, item_type, unit, purchase_unit, consumption_unit, package_quantity, unit_cost, default_price, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          effectiveCompanyId,
+          name.trim(),
+          description || '',
+          itemCategory,
+          subcategory || null,
+          itemType,
+          unit || 'UN',
+          purchase_unit || null,
+          consumption_unit || null,
+          package_quantity || null,
+          parsedCost,
+          price,
+          srvActive,
+          now
+        ]
+      );
+
+      // Save required materials if item is a service and array is provided
+      if (itemType === 'servico' && Array.isArray(required_materials)) {
+        runSql(`DELETE FROM service_required_materials WHERE service_id = ?`, [id]);
+        for (const reqMat of required_materials) {
+          if (!reqMat.material_name && !reqMat.name) continue;
+          const reqId = reqMat.id || `srm-${id}-${Math.random().toString(36).substring(2, 9)}`;
+          runSql(
+            `INSERT INTO service_required_materials (id, service_id, material_id, material_name, quantity, unit, default_price, is_optional, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              reqId,
+              id,
+              reqMat.material_id || null,
+              (reqMat.material_name || reqMat.name || '').trim(),
+              Number(reqMat.quantity) || 1,
+              (reqMat.unit || 'UN').trim().toUpperCase(),
+              Number(reqMat.default_price || reqMat.unit_price) || 0,
+              reqMat.is_optional ? 1 : 0,
+              reqMat.notes || null
+            ]
+          );
+        }
+      }
+
+      const created = queryOne(`
+        SELECT s.*, c.name as company_name
+        FROM services s
+        LEFT JOIN companies c ON s.company_id = c.id
+        WHERE s.id = ?
+      `, [id]);
+
+      const mats = queryAll(`SELECT * FROM service_required_materials WHERE service_id = ?`, [id]);
+      return res.status(201).json({ ...created, required_materials: mats });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/services/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const {
+        company_id,
+        name,
+        description,
+        category,
+        subcategory,
+        item_type,
+        unit,
+        purchase_unit,
+        consumption_unit,
+        package_quantity,
+        unit_cost,
+        default_price,
+        active,
+        required_materials
+      } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do serviço ou material é obrigatório.' });
+      }
+
+      const existing = queryOne(`SELECT id, company_id, created_at FROM services WHERE id = ?`, [id]);
+      const now = new Date().toISOString();
+      let effectiveCompanyId = company_id || existing?.company_id;
+      const compExists = effectiveCompanyId ? queryOne(`SELECT id FROM companies WHERE id = ?`, [effectiveCompanyId]) : null;
+      if (!compExists) {
+        const defaultComp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
+        effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
+      }
+
+      const srvActive = active !== undefined ? (Number(active) ? 1 : 0) : 1;
+      const price = Number(default_price) || 0;
+      const parsedCost = unit_cost !== undefined && unit_cost !== null ? Number(unit_cost) : null;
+      const itemType = item_type === 'material' ? 'material' : 'servico';
+      const itemCategory = category || (itemType === 'material' ? 'Material' : 'Serviço');
+
+      if (existing) {
+        runSql(
+          `UPDATE services SET name = ?, description = ?, category = ?, subcategory = ?, item_type = ?, unit = ?, purchase_unit = ?, consumption_unit = ?, package_quantity = ?, unit_cost = ?, default_price = ?, active = ?, company_id = ? WHERE id = ?`,
+          [
+            name.trim(),
+            description || '',
+            itemCategory,
+            subcategory || null,
+            itemType,
+            unit || 'UN',
+            purchase_unit || null,
+            consumption_unit || null,
+            package_quantity || null,
+            parsedCost,
+            price,
+            srvActive,
+            effectiveCompanyId,
+            id
+          ]
+        );
+      } else {
+        runSql(
+          `INSERT OR REPLACE INTO services (id, company_id, name, description, category, subcategory, item_type, unit, purchase_unit, consumption_unit, package_quantity, unit_cost, default_price, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            effectiveCompanyId,
+            name.trim(),
+            description || '',
+            itemCategory,
+            subcategory || null,
+            itemType,
+            unit || 'UN',
+            purchase_unit || null,
+            consumption_unit || null,
+            package_quantity || null,
+            parsedCost,
+            price,
+            srvActive,
+            now
+          ]
+        );
+      }
+
+      // Update required materials if array provided
+      if (Array.isArray(required_materials)) {
+        runSql(`DELETE FROM service_required_materials WHERE service_id = ?`, [id]);
+        for (const reqMat of required_materials) {
+          if (!reqMat.material_name && !reqMat.name) continue;
+          const reqId = reqMat.id || `srm-${id}-${Math.random().toString(36).substring(2, 9)}`;
+          runSql(
+            `INSERT INTO service_required_materials (id, service_id, material_id, material_name, quantity, unit, default_price, is_optional, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              reqId,
+              id,
+              reqMat.material_id || null,
+              (reqMat.material_name || reqMat.name || '').trim(),
+              Number(reqMat.quantity) || 1,
+              (reqMat.unit || 'UN').trim().toUpperCase(),
+              Number(reqMat.default_price || reqMat.unit_price) || 0,
+              reqMat.is_optional ? 1 : 0,
+              reqMat.notes || null
+            ]
+          );
+        }
+      }
+
+      const updated = queryOne(`
+        SELECT s.*, c.name as company_name
+        FROM services s
+        LEFT JOIN companies c ON s.company_id = c.id
+        WHERE s.id = ?
+      `, [id]);
+
+      const mats = queryAll(`SELECT * FROM service_required_materials WHERE service_id = ?`, [id]);
+      return res.json({ ...updated, required_materials: mats });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/services/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      runSql(`DELETE FROM service_required_materials WHERE service_id = ?`, [id]);
+      runSql(`DELETE FROM services WHERE id = ?`, [id]);
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Batch import services and materials (e.g. from Excel/CSV upload)
+  app.post('/api/services/batch-import', (req: Request, res: Response) => {
+    try {
+      const { items, company_id, update_existing } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'Nenhum item fornecido para importação.' });
+      }
+
+      const targetCompanyId = company_id || 'comp-master-cast';
+      const now = new Date().toISOString();
+      const shouldUpdateExisting = update_existing !== false;
+      let importedCount = 0;
+
+      for (const raw of items) {
+        if (!raw.name || !raw.name.trim()) continue;
+
+        const name = raw.name.trim();
+        const description = raw.description || '';
+        const itemType = raw.item_type === 'material' ? 'material' : 'servico';
+        const category = raw.category || (itemType === 'material' ? 'Material' : 'Serviço');
+        const unit = (raw.unit || 'UN').trim().toUpperCase();
+        const price = Number(raw.default_price) || 0;
+        const cost = raw.unit_cost !== undefined && raw.unit_cost !== null ? Number(raw.unit_cost) : null;
+
+        let id = raw.id;
+        if (shouldUpdateExisting && !id) {
+          const existing = queryOne(
+            `SELECT id FROM services WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND (company_id = ? OR company_id = 'comp-master-cast' OR company_id IS NULL)`,
+            [name, targetCompanyId]
+          );
+          if (existing && existing.id) {
+            id = existing.id;
+          }
+        }
+        if (!id) {
+          id = `srv-imp-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        }
+
+        runSql(
+          `INSERT OR REPLACE INTO services (id, company_id, name, description, category, item_type, unit, unit_cost, default_price, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          [id, targetCompanyId, name, description, category, itemType, unit, cost, price, now]
+        );
+
+        // If required_materials are specified
+        if (Array.isArray(raw.required_materials)) {
+          runSql(`DELETE FROM service_required_materials WHERE service_id = ?`, [id]);
+          for (const req of raw.required_materials) {
+            if (!req.material_name) continue;
+            const reqId = `srm-${id}-${Math.random().toString(36).substring(2, 9)}`;
+            runSql(
+              `INSERT INTO service_required_materials (id, service_id, material_id, material_name, quantity, unit, default_price, is_optional)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                reqId,
+                id,
+                req.material_id || null,
+                req.material_name.trim(),
+                Number(req.quantity) || 1,
+                (req.unit || 'UN').trim().toUpperCase(),
+                Number(req.default_price) || 0,
+                req.is_optional ? 1 : 0
+              ]
+            );
+          }
+        }
+
+        importedCount++;
+      }
+
+      saveDatabase();
+      return res.json({ success: true, count: importedCount });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Re-seed default catalog
+  app.post('/api/services/seed-defaults', (req: Request, res: Response) => {
+    try {
+      const { company_id } = req.body;
+      const targetCompany = company_id || 'comp-master-cast';
+      seedDefaultServicesAndMaterials(targetCompany);
+      return res.json({ success: true, message: 'Catálogo padrão recarregado com sucesso.' });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
@@ -2112,6 +2552,19 @@ async function startServer() {
     res.json({ status: 'ok', app: 'CAST Quote Backend', timestamp: new Date().toISOString() });
   });
 
+  // Limpeza total do banco de dados (preservando estritamente os cadastros de DEV)
+  app.post('/api/dev/clean-database', (req: Request, res: Response) => {
+    try {
+      cleanDatabaseComplete();
+      return res.json({
+        success: true,
+        message: 'Banco de dados limpo com sucesso! Apenas os cadastros de DEV foram mantidos.'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ==========================================
   // CLOUD PERSISTENCE & DATA RESTORATION SYNC
   // Mantém os dados da nuvem persistidos no SQLite mesmo após novos deploys
@@ -2146,6 +2599,7 @@ async function startServer() {
         users = [],
         clients = [],
         technicians = [],
+        services = [],
         quotes = [],
         work_orders = []
       } = req.body;
@@ -2155,6 +2609,7 @@ async function startServer() {
         users: 0,
         clients: 0,
         technicians: 0,
+        services: 0,
         quotes: 0,
         work_orders: 0
       };
@@ -2193,7 +2648,7 @@ async function startServer() {
             usr.id,
             usr.company_id || null,
             usr.name || 'Usuário',
-            usr.email,
+            usr.email.trim().toLowerCase(),
             usr.password || '123456',
             usr.role || 'TÉCNICO',
             usr.active !== undefined ? (Number(usr.active) ? 1 : 0) : 1,
@@ -2244,6 +2699,28 @@ async function startServer() {
           ]
         );
         restoredCounts.technicians++;
+      }
+
+      // 4.1 Restaurar Catálogo de Serviços e Materiais
+      for (const srv of services) {
+        if (!srv.id || !srv.name) continue;
+        runSql(
+          `INSERT OR REPLACE INTO services (id, company_id, name, description, category, item_type, unit, default_price, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            srv.id,
+            srv.company_id || 'comp-master-cast',
+            srv.name,
+            srv.description || '',
+            srv.category || 'Serviço',
+            srv.item_type || 'servico',
+            srv.unit || 'UN',
+            Number(srv.default_price) || 0,
+            srv.active !== undefined ? (Number(srv.active) ? 1 : 0) : 1,
+            srv.created_at || new Date().toISOString()
+          ]
+        );
+        restoredCounts.services++;
       }
 
       // 5. Restaurar Orçamentos e Itens

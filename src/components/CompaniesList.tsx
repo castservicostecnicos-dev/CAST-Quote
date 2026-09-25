@@ -22,7 +22,8 @@ import {
   Upload,
   Palette,
   Copy,
-  Power
+  Power,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -221,7 +222,7 @@ export const CompaniesList: React.FC = () => {
       } else {
         if (createManagerUser && managerEmail.trim()) {
           payload.manager_name = managerName.trim() || `Gerente ${name}`;
-          payload.manager_email = managerEmail.trim();
+          payload.manager_email = managerEmail.trim().toLowerCase();
           payload.manager_password = managerPassword.trim() || 'Cast123';
         }
         const createdComp: any = await api.createCompany(payload);
@@ -229,7 +230,7 @@ export const CompaniesList: React.FC = () => {
           setCompanies(prev => [createdComp, ...prev.filter(c => c.id !== createdComp.id)]);
         }
         if (createManagerUser && managerEmail.trim()) {
-          showToast(`Empresa "${name}" cadastrada com Gerente "${managerEmail.trim()}"!`);
+          showToast(`Empresa "${name}" cadastrada com Gerente "${managerEmail.trim().toLowerCase()}"!`);
         } else {
           showToast(`Empresa "${name}" cadastrada com sucesso!`);
         }
@@ -415,10 +416,11 @@ export const CompaniesList: React.FC = () => {
     if (!selectedCompany || !newUserName || !newUserEmail || !newUserPassword) return;
     setSavingUser(true);
     try {
+      const cleanEmail = newUserEmail.trim().toLowerCase();
       await api.createUser({
-        name: newUserName,
-        email: newUserEmail,
-        password: newUserPassword,
+        name: newUserName.trim(),
+        email: cleanEmail,
+        password: newUserPassword.trim(),
         role: newUserRole,
         company_id: selectedCompany.id,
         active: 1
@@ -603,7 +605,7 @@ export const CompaniesList: React.FC = () => {
                     </span>
                   )}
                   {selectedCompany.email && (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1 lowercase">
                       <Mail className="w-3.5 h-3.5 text-slate-400" />
                       {selectedCompany.email}
                     </span>
@@ -733,7 +735,7 @@ export const CompaniesList: React.FC = () => {
                               <span className="font-bold text-slate-900 block text-xs leading-snug break-words">
                                 {u.name} {isSelf && <span className="text-[10px] text-purple-700 font-extrabold">(Você)</span>}
                               </span>
-                              <span className="text-[11px] text-slate-500 block truncate">{u.email}</span>
+                              <span className="text-[11px] text-slate-500 block truncate lowercase">{u.email}</span>
                             </div>
                           </div>
                           <span
@@ -832,7 +834,7 @@ export const CompaniesList: React.FC = () => {
                                   <span className="font-bold text-slate-900 block leading-tight">
                                     {u.name} {isSelf && <span className="text-[10px] text-purple-700 font-extrabold">(Você)</span>}
                                   </span>
-                                  <span className="text-[11px] text-slate-500">{u.email}</span>
+                                  <span className="text-[11px] text-slate-500 lowercase">{u.email}</span>
                                 </div>
                               </div>
                             </td>
@@ -1051,7 +1053,7 @@ export const CompaniesList: React.FC = () => {
                         {c.email && (
                           <div className="flex items-center gap-2">
                             <Mail className="w-3.5 h-3.5 text-slate-400 flex-none" />
-                            <span className="truncate">{c.email}</span>
+                            <span className="truncate lowercase">{c.email}</span>
                           </div>
                         )}
                         {c.city && (
@@ -1140,9 +1142,9 @@ export const CompaniesList: React.FC = () => {
 
       {/* MODAL 1: COMPANY FORM (CREATE / EDIT) WITH DIRECT DEVICE LOGO UPLOADER */}
       {companyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center bg-black/75 p-0 sm:p-4 backdrop-blur-xs overscroll-contain overflow-y-auto">
+          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-2xl border border-slate-200 overflow-y-auto max-h-[92dvh] sm:max-h-[90vh] pb-24 sm:pb-6 flex flex-col animate-in slide-in-from-bottom-6 sm:fade-in sm:zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
               <div>
                 <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">
                   Módulo Multiempresa
@@ -1159,18 +1161,47 @@ export const CompaniesList: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveCompany} className="space-y-3.5 text-xs">
+            {/* Visualização em Tempo Real (Mobile Live Feedback) */}
+            <div className="mb-3.5 p-3 rounded-xl bg-slate-900 text-white shadow-xs border border-slate-800">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300 pb-1.5 border-b border-slate-800">
+                <span className="flex items-center gap-1.5 text-purple-400 font-bold">
+                  <Eye className="w-3.5 h-3.5" />
+                  Visualização em Tempo Real:
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-purple-600/30 text-purple-300 text-[10px] font-mono">
+                  {name ? 'Digitando' : 'Aguardando'}
+                </span>
+              </div>
+              <div className="pt-2 space-y-1 text-xs">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-slate-400 text-[11px] w-16 shrink-0">Empresa:</span>
+                  <span className="font-bold text-white truncate text-sm">
+                    {name || <span className="text-slate-500 italic font-normal">Digite o nome da empresa...</span>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 text-[11px] w-16 shrink-0">CNPJ:</span>
+                  <span className="font-mono text-purple-300">{cnpj || '--'}</span>
+                  <span className="text-slate-500 text-[10px]">|</span>
+                  <span className="text-slate-400 text-[11px]">Telefone:</span>
+                  <span className="font-mono text-emerald-400">{phone || '--'}</span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveCompany} className="space-y-3.5 text-xs flex-1">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Razão Social / Nome Fantasia *
+                <label className="block font-bold text-slate-800 mb-1 text-xs">
+                  Razão Social / Nome Fantasia <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                   placeholder="Nome da empresa..."
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-800 focus:border-purple-600 focus:outline-hidden font-medium"
+                  className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 focus:border-purple-600 focus:outline-hidden font-medium shadow-2xs"
                 />
               </div>
 
@@ -1207,11 +1238,13 @@ export const CompaniesList: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">E-mail Corporativo</label>
                 <input
+                  id="company-email-input"
+                  name="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
                   placeholder="contato@empresa.com.br"
-                  className="w-full rounded-xl border border-slate-300 p-2 text-slate-800"
+                  className="email-field lowercase-field w-full rounded-xl border border-slate-300 p-2 text-slate-800"
                 />
               </div>
 
@@ -1355,12 +1388,14 @@ export const CompaniesList: React.FC = () => {
                             E-mail de Login do Gerente *
                           </label>
                           <input
+                            id="manager-email-input"
+                            name="manager_email"
                             type="email"
                             required={createManagerUser}
                             value={managerEmail}
-                            onChange={(e) => setManagerEmail(e.target.value)}
+                            onChange={(e) => setManagerEmail(e.target.value.toLowerCase())}
                             placeholder="gerente@empresa.com"
-                            className="w-full rounded-xl border border-slate-300 bg-white p-2 text-slate-800 text-xs focus:border-purple-600 focus:outline-hidden"
+                            className="email-field lowercase-field w-full rounded-xl border border-slate-300 bg-white p-2 text-slate-800 text-xs focus:border-purple-600 focus:outline-hidden"
                           />
                         </div>
                         <div>
@@ -1380,12 +1415,15 @@ export const CompaniesList: React.FC = () => {
                             </button>
                           </div>
                           <input
+                            id="company-manager-password"
+                            name="manager_password"
+                            data-password="true"
                             type="text"
                             required={createManagerUser}
                             value={managerPassword}
                             onChange={(e) => setManagerPassword(e.target.value)}
                             placeholder="Cast123"
-                            className="w-full rounded-xl border border-slate-300 bg-white p-2 text-slate-800 font-mono text-xs focus:border-purple-600 focus:outline-hidden"
+                            className="password-field mixed-case-field w-full rounded-xl border border-slate-300 bg-white p-2 text-slate-800 font-mono text-xs focus:border-purple-600 focus:outline-hidden"
                           />
                         </div>
                       </div>
@@ -1407,7 +1445,15 @@ export const CompaniesList: React.FC = () => {
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+              {/* Badge de Persistência Cloud Firestore */}
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-950 text-[11px]">
+                <ShieldCheck className="w-4 h-4 text-purple-600 flex-none" />
+                <span className="leading-tight">
+                  <strong>Banco de Dados em Nuvem (Firebase Cloud Firestore):</strong> Dados multiempresa gravados com persistência definitiva na nuvem, protegidos contra deploys.
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setCompanyModalOpen(false)}
@@ -1471,7 +1517,7 @@ export const CompaniesList: React.FC = () => {
                 <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-1">
                   <div className="text-[11px] text-slate-500">Usuário Selecionado:</div>
                   <div className="font-bold text-slate-800 text-sm">{userForPassword.name}</div>
-                  <div className="text-slate-600">{userForPassword.email}</div>
+                  <div className="text-slate-600 lowercase">{userForPassword.email}</div>
                   <span
                     className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getRoleBadge(
                       userForPassword.role
@@ -1494,12 +1540,15 @@ export const CompaniesList: React.FC = () => {
                   </div>
                   <div className="relative flex items-center">
                     <input
+                      id="recovery-new-password"
+                      name="new_password"
+                      data-password="true"
                       type="text"
                       required
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Digite ou gere a nova senha..."
-                      className="w-full rounded-xl border border-slate-300 p-2.5 pr-20 text-slate-800 font-mono text-sm focus:border-purple-600 focus:outline-hidden"
+                      className="password-field mixed-case-field w-full rounded-xl border border-slate-300 p-2.5 pr-20 text-slate-800 font-mono text-sm focus:border-purple-600 focus:outline-hidden"
                     />
                     {newPassword && (
                       <button
@@ -1562,7 +1611,7 @@ export const CompaniesList: React.FC = () => {
                   <strong>Nome:</strong> {userToDelete.name}
                 </div>
                 <div>
-                  <strong>E-mail:</strong> {userToDelete.email}
+                  <strong>E-mail:</strong> <span className="lowercase">{userToDelete.email}</span>
                 </div>
                 <div>
                   <strong>Perfil:</strong> {userToDelete.role}
@@ -1631,24 +1680,29 @@ export const CompaniesList: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">E-mail de Acesso *</label>
                 <input
+                  id="new-user-email-input"
+                  name="user_email"
                   type="email"
                   required
                   value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  onChange={(e) => setNewUserEmail(e.target.value.toLowerCase())}
                   placeholder="usuario@empresa.com.br"
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-800"
+                  className="email-field lowercase-field w-full rounded-xl border border-slate-300 p-2.5 text-slate-800"
                 />
               </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Senha Inicial *</label>
                 <input
+                  id="new-user-password"
+                  name="user_password"
+                  data-password="true"
                   type="text"
                   required
                   value={newUserPassword}
                   onChange={(e) => setNewUserPassword(e.target.value)}
                   placeholder="Senha de acesso"
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-800 font-mono"
+                  className="password-field mixed-case-field w-full rounded-xl border border-slate-300 p-2.5 text-slate-800 font-mono"
                 />
               </div>
 

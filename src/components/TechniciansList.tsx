@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Plus, Search, Edit2, Trash2, Phone, Mail, BadgeCheck, Building } from 'lucide-react';
+import { UserCheck, Plus, Search, Edit2, Trash2, Phone, Mail, BadgeCheck, Building, Users, Boxes } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Technician } from '../types';
 
-export const TechniciansList: React.FC = () => {
+interface TechniciansListProps {
+  onSelectTab?: (tab: string) => void;
+}
+
+export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab }) => {
   const { user, activeCompany, companies, isDev, isManager } = useAuth();
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +78,7 @@ export const TechniciansList: React.FC = () => {
         company_id: targetCompanyId,
         name: name.trim(),
         phone: phone.trim(),
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         role_title: roleTitle.trim() || 'Técnico Especialista',
         active: active ? 1 : 0
       };
@@ -116,6 +120,34 @@ export const TechniciansList: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* Cadastros Hub Switcher */}
+      {onSelectTab && (
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-200 overflow-x-auto">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Cadastros:</span>
+          <button
+            onClick={() => onSelectTab('clients')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+          >
+            <Users className="w-3.5 h-3.5 text-slate-500" />
+            <span>Clientes</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('technicians')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-2xs cursor-pointer"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>Técnicos ({technicians.length})</span>
+          </button>
+          <button
+            onClick={() => onSelectTab('services')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+          >
+            <Boxes className="w-3.5 h-3.5 text-slate-500" />
+            <span>Serviços & Materiais</span>
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -224,7 +256,7 @@ export const TechniciansList: React.FC = () => {
                 {t.email && (
                   <div className="flex items-center gap-2">
                     <Mail className="w-3.5 h-3.5 text-slate-400 flex-none" />
-                    <span className="truncate">{t.email}</span>
+                    <span className="truncate lowercase">{t.email}</span>
                   </div>
                 )}
               </div>
@@ -310,11 +342,13 @@ export const TechniciansList: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">E-mail</label>
                 <input
+                  id="tech-email-input"
+                  name="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
                   placeholder="tecnico@empresa.com.br"
-                  className="w-full rounded-xl border border-slate-300 p-2 text-slate-800"
+                  className="email-field lowercase-field w-full rounded-xl border border-slate-300 p-2 text-slate-800"
                 />
               </div>
 

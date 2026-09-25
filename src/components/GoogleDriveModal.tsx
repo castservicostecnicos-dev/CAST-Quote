@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Image as ImageIcon,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Mail
 } from 'lucide-react';
 import { Quote, WorkOrder, Company } from '../types';
 import { api } from '../services/api';
@@ -26,6 +27,7 @@ import {
   logout,
   getAccessToken,
   uploadDocumentAndAssetsToDrive,
+  shareDriveFolderWithEmail,
   DriveClientTreeResult,
   DriveUploadedPhoto,
   DocumentSyncProgress,
@@ -54,6 +56,9 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const [authenticating, setAuthenticating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<DocumentSyncProgress | null>(null);
+  const [clientEmailInput, setClientEmailInput] = useState('');
+  const [shareStatusMsg, setShareStatusMsg] = useState<string | null>(null);
+  const [sharingAccess, setSharingAccess] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     success: boolean;
     tree: DriveClientTreeResult;
@@ -61,6 +66,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     pdfLink: string;
     photos: DriveUploadedPhoto[];
     message: string;
+    sharedEmail?: string;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -70,8 +76,13 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     if (isOpen) {
       setSyncResult(null);
       setErrorMessage(null);
+      setShareStatusMsg(null);
       setCopied(false);
       setProgress(null);
+
+      // Preload client email if available
+      const initialClientEmail = (data as any)?.client_email || (data as any)?.email || (data as any)?.client?.email || '';
+      setClientEmailInput(initialClientEmail);
 
       // Check configured backend account
       api.getDriveSettings().then((s) => {
@@ -200,7 +211,10 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       // 3. Upload Tree, PDF and Individual Photos with Unique Codes
       const result = await uploadDocumentAndAssetsToDrive({
         type,
-        data,
+        data: {
+          ...data,
+          client_email: clientEmailInput.trim() || (data as any).client_email || (data as any).email
+        },
         companyName: compName,
         pdfBlob,
         onProgress: (p) => setProgress(p)
@@ -227,8 +241,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         pdfFileId: result.pdf.fileId,
         pdfLink: result.pdf.webViewLink || `https://drive.google.com/file/d/${result.pdf.fileId}/view`,
         photos: result.photos,
-        message: 'Árvore de arquivos e fotos organizadas com sucesso no Google Drive!'
+        sharedEmail: result.shareInfo?.email,
+        message: result.shareInfo?.status === 'SHARED'
+          ? `Árvore criada e acesso liberado no Google Drive para ${result.shareInfo.email}!`
+          : 'Árvore de arquivos e fotos organizadas com sucesso no Google Drive!'
       });
+
+      if (result.shareInfo?.status === 'SHARED') {
+        setShareStatusMsg(`Acesso à pasta liberado com sucesso para ${result.shareInfo.email}`);
+      } else if (result.shareInfo?.status === 'FAILED') {
+        setErrorMessage(`Arquivos enviados, mas falhou a liberação para o e-mail: ${result.shareInfo.message}`);
+      }
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('fechada antes de')) {
         setErrorMessage(
@@ -253,6 +276,35 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       navigator.clipboard.writeText(syncResult.tree.clientFolderUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShareNow = async () => {
+    const cleanEmail = clientEmailInput.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Por favor, digite o e-mail do cliente (ex: cliente@gmail.com) para liberar o acesso.');
+      return;
+    }
+    if (!syncResult?.tree?.clientFolderId) {
+      setErrorMessage('Clique primeiro em "Criar Árvore e Salvar no Google Drive" para gerar a pasta do cliente antes de liberar o acesso.');
+      return;
+    }
+
+    setSharingAccess(true);
+    setErrorMessage(null);
+    setShareStatusMsg(null);
+    try {
+      const res = await shareDriveFolderWithEmail({
+        folderId: syncResult.tree.clientFolderId,
+        emailAddress: cleanEmail,
+        role: 'reader',
+        sendNotificationEmail: true
+      });
+      setShareStatusMsg(res.message);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao conceder acesso ao e-mail no Google Drive.');
+    } finally {
+      setSharingAccess(false);
     }
   };
 
@@ -426,6 +478,60 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                     </span>
                   </div>
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* Seção de Liberação de Acesso no Google Drive para o Cliente */}
+          <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-950">
+                <Mail className="w-4 h-4 text-blue-600" />
+                <span>Liberação de Acesso no Google Drive do Cliente</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold">
+                Compartilhamento Direto
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-600 leading-normal">
+              Informe o e-mail Google que o cliente forneceu para liberar o acesso dele à pasta de ordens de serviço, orçamentos e fotos.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="email"
+                value={clientEmailInput}
+                onChange={(e) => setClientEmailInput(e.target.value.toLowerCase())}
+                placeholder="cliente@gmail.com"
+                className="flex-1 rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600 shadow-2xs"
+              />
+              {syncResult && (
+                <button
+                  type="button"
+                  onClick={handleShareNow}
+                  disabled={sharingAccess}
+                  className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                >
+                  {sharingAccess ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Liberando Acesso...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Liberar Acesso Agora</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {shareStatusMsg && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-none" />
+                <span>{shareStatusMsg}</span>
               </div>
             )}
           </div>

@@ -338,11 +338,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                       Chave de API / Token
                     </label>
                     <input
+                      id="share-api-key"
+                      name="api_key"
+                      data-password="true"
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="Bearer token / apikey"
-                      className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-emerald-500"
+                      className="password-field mixed-case-field w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-emerald-500"
                     />
                   </div>
                   <div>
@@ -421,11 +424,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </label>
             <div className="flex gap-2">
               <input
+                id="share-client-email"
+                name="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value.toLowerCase())}
                 placeholder="cliente@empresa.com.br"
-                className="flex-1 rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500"
+                className="email-field lowercase-field flex-1 rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500"
               />
               <button
                 type="button"

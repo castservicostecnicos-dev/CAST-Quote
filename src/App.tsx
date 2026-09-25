@@ -9,6 +9,7 @@ import { WorkOrdersList } from './components/WorkOrdersList';
 import { WorkOrderModal } from './components/WorkOrderModal';
 import { ClientsList } from './components/ClientsList';
 import { TechniciansList } from './components/TechniciansList';
+import { ServicesList } from './components/ServicesList';
 import { UsersList } from './components/UsersList';
 import { CompaniesList } from './components/CompaniesList';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
@@ -18,11 +19,12 @@ import { DevDriveSettingsModal } from './components/DevDriveSettingsModal';
 import { DemoReturnBanner } from './components/DemoReturnBanner';
 import { DemoDashboard } from './components/DemoDashboard';
 import { CommercialPresentationModal } from './components/CommercialPresentationModal';
+import { SplashScreen } from './components/SplashScreen';
 import { Quote, WorkOrder } from './types';
 import { api } from './services/api';
 
 function MainApp() {
-  const { user, activeCompany, companies, isSupervisor } = useAuth();
+  const { user, activeCompany, companies, isSupervisor, authLoading, isBackendWakingUp, brandColor } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
   // Recupera e sincroniza automaticamente os dados da nuvem para o SQLite local após deploys
@@ -41,29 +43,29 @@ function MainApp() {
   // Fallback if current tab is not allowed for user role
   const activeSafeTab = React.useMemo(() => {
     if (isDev) {
-      if (['companies', 'demo'].includes(currentTab)) {
+      if (['companies', 'demo', 'services', 'clients', 'technicians', 'quotes', 'work-orders', 'users', 'dashboard'].includes(currentTab)) {
         return currentTab;
       }
       return 'companies';
     }
     if (isManagerOrAdmin) {
-      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'users'].includes(currentTab)) {
+      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'services', 'users'].includes(currentTab)) {
         return currentTab;
       }
       return 'dashboard';
     }
-    // TÉCNICO and SUPERVISOR: only dashboard, quotes, work-orders
+    if (user?.role === 'SUPERVISOR') {
+      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'services'].includes(currentTab)) {
+        return currentTab;
+      }
+      return 'dashboard';
+    }
+    // TÉCNICO: only dashboard, quotes, work-orders
     if (['dashboard', 'quotes', 'work-orders'].includes(currentTab)) {
       return currentTab;
     }
     return 'dashboard';
-  }, [currentTab, isDev, isManagerOrAdmin]);
-
-  React.useEffect(() => {
-    if (isDev && !['companies', 'demo'].includes(currentTab)) {
-      setCurrentTab('companies');
-    }
-  }, [isDev, currentTab]);
+  }, [currentTab, isDev, isManagerOrAdmin, user?.role]);
 
   // Modals state
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -92,6 +94,18 @@ function MainApp() {
 
   // DEV Google Drive Designated Account Modal State
   const [driveSettingsModalOpen, setDriveSettingsModalOpen] = useState(false);
+
+  // Exibe a SplashScreen enquanto o estado de autenticação e os dados iniciais estão carregando,
+  // ou enquanto o servidor backend em nuvem (Render/Cloud) está acordando de cold-start
+  if (authLoading) {
+    return (
+      <SplashScreen
+        brandColor={brandColor || '#2563eb'}
+        isBackendWakingUp={isBackendWakingUp}
+        statusText={isBackendWakingUp ? 'Conectando ao servidor em nuvem...' : 'Carregando ecossistema CAST QUOTE...'}
+      />
+    );
+  }
 
   // Unauthenticated screen
   if (!user) {
@@ -215,9 +229,11 @@ function MainApp() {
           />
         )}
 
-        {activeSafeTab === 'clients' && <ClientsList />}
+        {activeSafeTab === 'clients' && <ClientsList onSelectTab={setCurrentTab} />}
 
-        {activeSafeTab === 'technicians' && <TechniciansList />}
+        {activeSafeTab === 'technicians' && <TechniciansList onSelectTab={setCurrentTab} />}
+
+        {activeSafeTab === 'services' && <ServicesList onSelectTab={setCurrentTab} />}
 
         {activeSafeTab === 'users' && <UsersList />}
 
@@ -234,23 +250,27 @@ function MainApp() {
       </main>
 
       {/* Modals */}
-      <QuoteModal
-        isOpen={quoteModalOpen}
-        onClose={() => setQuoteModalOpen(false)}
-        onSaved={() => {
-          // Trigger refresh by updating state or triggering reload
-        }}
-        quoteToEdit={quoteToEdit}
-      />
+      {quoteModalOpen && (
+        <QuoteModal
+          isOpen={quoteModalOpen}
+          onClose={() => setQuoteModalOpen(false)}
+          onSaved={() => {
+            // Trigger refresh by updating state or triggering reload
+          }}
+          quoteToEdit={quoteToEdit}
+        />
+      )}
 
-      <WorkOrderModal
-        isOpen={orderModalOpen}
-        onClose={() => setOrderModalOpen(false)}
-        onSaved={() => {
-          // Trigger refresh
-        }}
-        orderToEdit={orderToEdit}
-      />
+      {orderModalOpen && (
+        <WorkOrderModal
+          isOpen={orderModalOpen}
+          onClose={() => setOrderModalOpen(false)}
+          onSaved={() => {
+            // Trigger refresh
+          }}
+          orderToEdit={orderToEdit}
+        />
+      )}
 
       {/* Modals with automatic company context resolution (especially for independent DEV) */}
       {(() => {
@@ -264,51 +284,61 @@ function MainApp() {
 
         return (
           <>
-            <PdfPreviewModal
-              isOpen={pdfModalOpen}
-              onClose={() => setPdfModalOpen(false)}
-              type={pdfType}
-              data={pdfDoc}
-              company={getEffectiveCompany(pdfDoc)}
-              onOpenShare={() => {
-                setPdfModalOpen(false);
-                setShareType(pdfType);
-                setShareDoc(pdfDoc);
-                setShareModalOpen(true);
-              }}
-              onOpenDrive={() => {
-                setPdfModalOpen(false);
-                setDriveType(pdfType);
-                setDriveDoc(pdfDoc);
-                setDriveModalOpen(true);
-              }}
-            />
+            {pdfModalOpen && (
+              <PdfPreviewModal
+                isOpen={pdfModalOpen}
+                onClose={() => setPdfModalOpen(false)}
+                type={pdfType}
+                data={pdfDoc}
+                company={getEffectiveCompany(pdfDoc)}
+                onOpenShare={() => {
+                  setPdfModalOpen(false);
+                  setShareType(pdfType);
+                  setShareDoc(pdfDoc);
+                  setShareModalOpen(true);
+                }}
+                onOpenDrive={() => {
+                  setPdfModalOpen(false);
+                  setDriveType(pdfType);
+                  setDriveDoc(pdfDoc);
+                  setDriveModalOpen(true);
+                }}
+              />
+            )}
 
-            <ShareModal
-              isOpen={shareModalOpen}
-              onClose={() => setShareModalOpen(false)}
-              type={shareType}
-              data={shareDoc}
-              company={getEffectiveCompany(shareDoc)}
-            />
+            {shareModalOpen && (
+              <ShareModal
+                isOpen={shareModalOpen}
+                onClose={() => setShareModalOpen(false)}
+                type={shareType}
+                data={shareDoc}
+                company={getEffectiveCompany(shareDoc)}
+              />
+            )}
 
-            <GoogleDriveModal
-              isOpen={driveModalOpen}
-              onClose={() => setDriveModalOpen(false)}
-              type={driveType}
-              data={driveDoc}
-              company={getEffectiveCompany(driveDoc)}
-            />
+            {driveModalOpen && (
+              <GoogleDriveModal
+                isOpen={driveModalOpen}
+                onClose={() => setDriveModalOpen(false)}
+                type={driveType}
+                data={driveDoc}
+                company={getEffectiveCompany(driveDoc)}
+              />
+            )}
 
-            <CommercialPresentationModal
-              isOpen={presentationModalOpen}
-              onClose={() => setPresentationModalOpen(false)}
-            />
+            {presentationModalOpen && (
+              <CommercialPresentationModal
+                isOpen={presentationModalOpen}
+                onClose={() => setPresentationModalOpen(false)}
+              />
+            )}
 
-            <DevDriveSettingsModal
-              isOpen={driveSettingsModalOpen}
-              onClose={() => setDriveSettingsModalOpen(false)}
-            />
+            {driveSettingsModalOpen && (
+              <DevDriveSettingsModal
+                isOpen={driveSettingsModalOpen}
+                onClose={() => setDriveSettingsModalOpen(false)}
+              />
+            )}
           </>
         );
       })()}

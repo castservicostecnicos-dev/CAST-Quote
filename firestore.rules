@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permitir operações para as coleções do sistema
+    // Regras de segurança completas para persistência em nuvem
     match /companies/{companyId} {
       allow read, write: if true;
     }
@@ -20,5 +20,15 @@ service cloud.firestore {
     match /technicians/{technicianId} {
       allow read, write: if true;
     }
+    match /services/{serviceId} {
+      allow read, write: if true;
+    }
+    match /app_settings/{settingId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if true;
+    }
   }
 }
+

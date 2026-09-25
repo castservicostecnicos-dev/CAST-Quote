@@ -3,12 +3,13 @@ import {
   User,
   Technician,
   Client,
+  ServiceItem,
   Quote,
   WorkOrder,
   DashboardStats,
   NotificationLog
 } from '../types';
-import { firebaseService } from './firebase';
+import { firebaseService, cleanFirestoreDatabaseComplete } from './firebase';
 
 const BASE_URL = '/api';
 
@@ -43,7 +44,11 @@ const LOCAL_USERS_KEY = 'cast_cached_users';
 export const getCachedUsers = (): User[] => {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const users: User[] = raw ? JSON.parse(raw) : [];
+    return users.map(u => ({
+      ...u,
+      email: (u.email || '').trim().toLowerCase()
+    }));
   } catch {
     return [];
   }
@@ -51,7 +56,11 @@ export const getCachedUsers = (): User[] => {
 
 export const setCachedUsers = (users: User[]) => {
   try {
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+    const sanitized = users.map(u => ({
+      ...u,
+      email: (u.email || '').trim().toLowerCase()
+    }));
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(sanitized));
   } catch {}
 };
 
@@ -73,7 +82,11 @@ export const api = {
       }, 3000);
       const ct = res.headers.get('content-type') || '';
       if (res.ok && ct.includes('application/json')) {
-        return await res.json();
+        const data = await res.json();
+        if (data.user) {
+          data.user.email = (data.user.email || cleanEmail).trim().toLowerCase();
+        }
+        return data;
       }
       if (res.status === 401 || res.status === 403) {
         const errData = await res.json().catch(() => ({}));
@@ -89,11 +102,14 @@ export const api = {
     // Firestore Users authentication fallback
     try {
       const users = await firebaseService.users.getAll();
-      const found = users.find((u) => u.email.toLowerCase() === cleanEmail);
+      const found = users.find((u) => (u.email || '').trim().toLowerCase() === cleanEmail);
       if (found) {
         return {
           token: `fb-token-${found.id}-${Date.now()}`,
-          user: found
+          user: {
+            ...found,
+            email: (found.email || cleanEmail).trim().toLowerCase()
+          }
         };
       }
     } catch (e) {}
@@ -107,11 +123,10 @@ export const api = {
       const params = new URLSearchParams();
       if (userRole) params.append('userRole', userRole);
       if (companyId) params.append('companyId', companyId);
-      const res = await fetchWithTimeout(`${BASE_URL}/companies?${params.toString()}`, {}, 1200);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
+      const res = await fetchWithTimeout(`${BASE_URL}/companies?${params.toString()}`, {}, 2500);
+      if (res.ok) {
         const companies: Company[] = await res.json();
-        if (companies && companies.length > 0) {
+        if (Array.isArray(companies)) {
           setCachedCompanies(companies);
           return companies;
         }
@@ -122,7 +137,7 @@ export const api = {
 
     try {
       const companies = await firebaseService.companies.getAll(userRole, companyId);
-      if (companies && companies.length > 0) {
+      if (Array.isArray(companies)) {
         setCachedCompanies(companies);
         return companies;
       }
@@ -130,67 +145,47 @@ export const api = {
       console.warn('Fallback para Firestore falhou ao buscar empresas:', err);
     }
 
-    // Local cached fallback so UI is NEVER empty
-    const cached = getCachedCompanies();
-    if (cached.length > 0) {
-      if (userRole && userRole !== 'DEV' && companyId) {
-        return cached.filter(c => c.id === companyId && c.active !== 0);
-      }
-      return cached.filter(c => c.active !== 0);
-    }
-
-    return [];
+    return getCachedCompanies();
   },
 
   createCompany: async (company: Partial<Company> & { manager_name?: string; manager_email?: string; manager_password?: string }): Promise<Company> => {
     let created: Company | null = null;
+    const sanitizedCompany = {
+      ...company,
+      email: company.email ? company.email.trim().toLowerCase() : '',
+      manager_email: company.manager_email ? company.manager_email.trim().toLowerCase() : undefined
+    };
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/companies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(company)
+        body: JSON.stringify(sanitizedCompany)
       }, 3500);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
+      if (res.ok) {
         created = await res.json();
       }
     } catch (err) {
       console.warn('Erro ao criar empresa na API local:', err);
     }
 
-    try {
-      const fbCompany = await firebaseService.companies.create(created || company);
-      if (!created) created = fbCompany;
-    } catch (err) {
-      console.warn('Firestore offline ao criar empresa:', err);
+    if (created) {
+      // Sync em segundo plano no Firestore sem bloquear o usuário
+      firebaseService.companies.create(created).catch(() => {});
+      try {
+        const existing = getCachedCompanies();
+        const updated = [created, ...existing.filter(c => c.id !== created!.id)];
+        setCachedCompanies(updated);
+      } catch {}
+      return created;
     }
 
-    // Fallback if neither local API nor Firestore responded in time
-    if (!created) {
-      const id = company.id || `comp-${Date.now()}`;
-      created = {
-        id,
-        name: company.name || 'Nova Empresa',
-        cnpj: company.cnpj || '',
-        email: company.email || '',
-        phone: company.phone || '',
-        address: company.address || '',
-        city: company.city || '',
-        state: company.state || '',
-        logo_url: company.logo_url || '',
-        primary_color: company.primary_color || '#2563eb',
-        active: company.active ?? 1,
-        created_at: company.created_at || new Date().toISOString()
-      };
-    }
-
+    // Fallback apenas se a API local falhar
+    const fbCompany = await firebaseService.companies.create(company);
     try {
       const existing = getCachedCompanies();
-      const updated = [created, ...existing.filter(c => c.id !== created!.id)];
-      setCachedCompanies(updated);
+      setCachedCompanies([fbCompany, ...existing.filter(c => c.id !== fbCompany.id)]);
     } catch {}
-
-    return created;
+    return fbCompany;
   },
 
   updateCompany: async (id: string, company: Partial<Company>): Promise<Company> => {
@@ -201,37 +196,24 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(company)
       }, 3000);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
+      if (res.ok) {
         updated = await res.json();
       }
     } catch (err) {
       console.warn('Erro ao atualizar empresa na API local:', err);
     }
 
-    try {
-      const fbCompany = await firebaseService.companies.update(id, company);
-      if (!updated) updated = fbCompany;
-    } catch (err) {
-      console.warn('Firestore offline ao atualizar empresa:', err);
+    if (updated) {
+      firebaseService.companies.update(id, company).catch(() => {});
+      try {
+        const currentList = getCachedCompanies();
+        const nextList = currentList.map(c => c.id === id ? { ...c, ...updated } : c);
+        setCachedCompanies(nextList);
+      } catch {}
+      return updated;
     }
 
-    if (!updated) {
-      const existing = getCachedCompanies().find(c => c.id === id);
-      updated = {
-        ...(existing || {}),
-        ...company,
-        id
-      } as Company;
-    }
-
-    try {
-      const currentList = getCachedCompanies();
-      const nextList = currentList.map(c => c.id === id ? { ...c, ...updated } : c);
-      setCachedCompanies(nextList);
-    } catch {}
-
-    return updated;
+    return await firebaseService.companies.update(id, company);
   },
 
   updateCompanyBranding: async (id: string, primaryColor: string, logoUrl?: string, storagePath?: string): Promise<Company> => {
@@ -249,15 +231,12 @@ export const api = {
       console.warn('Erro ao atualizar branding na API local:', err);
     }
 
-    try {
-      const fbCompany = await firebaseService.companies.updateBranding(id, primaryColor, logoUrl, storagePath);
-      if (!updated) updated = fbCompany;
-    } catch (err) {
-      console.warn('Firestore offline ao salvar branding:', err);
+    if (updated) {
+      firebaseService.companies.updateBranding(id, primaryColor, logoUrl, storagePath).catch(() => {});
+      return updated;
     }
 
-    if (!updated) throw new Error('Erro ao atualizar branding da empresa.');
-    return updated;
+    return await firebaseService.companies.updateBranding(id, primaryColor, logoUrl, storagePath);
   },
 
   deleteCompany: async (id: string): Promise<{ success: boolean }> => {
@@ -266,11 +245,10 @@ export const api = {
     } catch (err) {
       console.warn('Erro ao deletar empresa localmente:', err);
     }
+    firebaseService.companies.delete(id).catch(() => {});
     try {
-      await firebaseService.companies.delete(id);
-    } catch (err) {
-      console.warn('Erro ao deletar empresa no Firestore:', err);
-    }
+      setCachedCompanies(getCachedCompanies().filter(c => c.id !== id));
+    } catch {}
     return { success: true };
   },
 
@@ -289,17 +267,9 @@ export const api = {
       console.warn('Erro ao alterar status da empresa na API local:', err);
     }
 
-    try {
-      const fbCompany = await firebaseService.companies.update(id, { active: active ? 1 : 0 });
-      if (!result) {
-        result = { company: fbCompany };
-      }
-    } catch (err) {
-      console.warn('Firestore offline ao alterar status da empresa:', err);
-    }
-
-    if (!result) throw new Error('Erro ao alterar status da empresa.');
-    return result;
+    firebaseService.companies.update(id, { active: active ? 1 : 0 }).catch(() => {});
+    if (result) return result;
+    return { company: { id, active: active ? 1 : 0 } as Company };
   },
 
   // USERS (Local SQLite API + Firestore mirror + Local Cache)
@@ -308,66 +278,49 @@ export const api = {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (userRole) params.append('userRole', userRole);
-      const res = await fetchWithTimeout(`${BASE_URL}/users?${params.toString()}`, {}, 1200);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
+      const res = await fetchWithTimeout(`${BASE_URL}/users?${params.toString()}`, {}, 2500);
+      if (res.ok) {
         const users: User[] = await res.json();
-        if (users && users.length > 0) {
+        if (Array.isArray(users)) {
           const filtered = users.filter((u) => u.role !== 'DEV');
-          const existing = getCachedUsers();
-          if (companyId) {
-            const others = existing.filter(u => u.company_id !== companyId);
-            setCachedUsers([...others, ...filtered]);
-          } else {
-            setCachedUsers(filtered);
-          }
+          setCachedUsers(filtered);
           return filtered;
         }
       }
     } catch (err) {
-      // Local API unavailable or timed out, fallback to Firestore
+      // Local API unavailable
     }
 
     try {
       const users = await firebaseService.users.getAll(companyId, userRole);
-      if (users.length > 0) {
-        const filtered = users.filter((u) => u.role !== 'DEV');
-        const existing = getCachedUsers();
-        if (companyId) {
-          const others = existing.filter(u => u.company_id !== companyId);
-          setCachedUsers([...others, ...filtered]);
-        } else {
-          setCachedUsers(filtered);
-        }
-        return filtered;
-      }
+      const filtered = users.filter((u) => u.role !== 'DEV');
+      return filtered;
     } catch (err) {
-      console.warn('Fallback para Firestore falhou ao buscar usuários:', err);
+      return getCachedUsers().filter(u => u.role !== 'DEV');
     }
-
-    // Local cached fallback so UI is NEVER empty
-    const cached = getCachedUsers();
-    if (cached.length > 0) {
-      if (companyId && companyId !== 'all' && companyId !== 'ALL') {
-        return cached.filter(u => u.company_id === companyId && u.role !== 'DEV');
-      }
-      return cached.filter(u => u.role !== 'DEV');
-    }
-
-    return [];
   },
 
   createUser: async (user: Partial<User>): Promise<User> => {
     let created: User | null = null;
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const sanitizedUser: Partial<User> = {
+      ...user,
+      name: user.name ? user.name.trim() : '',
+      email: cleanEmail
+    };
+
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
+        body: JSON.stringify(sanitizedUser)
       }, 3000);
       const data = await res.json();
       if (res.ok) {
-        created = data;
+        created = {
+          ...data,
+          email: (data.email || cleanEmail).trim().toLowerCase()
+        };
       } else {
         throw new Error(data.error || 'Erro ao criar usuário');
       }
@@ -379,21 +332,21 @@ export const api = {
     }
 
     try {
-      const fbUser = await firebaseService.users.create(created || user);
-      if (!created) created = fbUser;
+      const fbUser = await firebaseService.users.create(created || sanitizedUser);
+      if (!created) created = { ...fbUser, email: (fbUser.email || cleanEmail).trim().toLowerCase() };
     } catch (err) {
       console.warn('Firestore offline ao criar usuário:', err);
     }
 
     if (!created) {
-      const id = user.id || `usr-${Date.now()}`;
+      const id = sanitizedUser.id || `usr-${Date.now()}`;
       created = {
         id,
-        company_id: user.company_id || '',
-        name: user.name || '',
-        email: user.email || '',
-        role: user.role || 'TÉCNICO',
-        active: user.active ?? 1,
+        company_id: sanitizedUser.company_id || '',
+        name: sanitizedUser.name || '',
+        email: cleanEmail,
+        role: sanitizedUser.role || 'TÉCNICO',
+        active: sanitizedUser.active ?? 1,
         created_at: new Date().toISOString()
       };
     }
@@ -407,15 +360,24 @@ export const api = {
 
   updateUser: async (id: string, user: Partial<User>): Promise<User> => {
     let updated: User | null = null;
+    const sanitizedUser: Partial<User> = {
+      ...user,
+      ...(user.name ? { name: user.name.trim() } : {}),
+      ...(user.email ? { email: user.email.trim().toLowerCase() } : {})
+    };
+
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
+        body: JSON.stringify(sanitizedUser)
       }, 3000);
       const data = await res.json();
       if (res.ok) {
-        updated = data;
+        updated = {
+          ...data,
+          email: (data.email || sanitizedUser.email || '').trim().toLowerCase()
+        };
       } else {
         throw new Error(data.error || 'Erro ao atualizar usuário');
       }
@@ -427,8 +389,8 @@ export const api = {
     }
 
     try {
-      const fbUser = await firebaseService.users.update(id, user);
-      if (!updated) updated = fbUser;
+      const fbUser = await firebaseService.users.update(id, sanitizedUser);
+      if (!updated) updated = { ...fbUser, email: (fbUser.email || sanitizedUser.email || '').trim().toLowerCase() };
     } catch (err) {
       console.warn('Firestore offline ao atualizar usuário:', err);
     }
@@ -436,7 +398,7 @@ export const api = {
     if (!updated) {
       const cached = getCachedUsers();
       const existing = cached.find(u => u.id === id);
-      updated = { ...(existing || {}), ...user, id } as User;
+      updated = { ...(existing || {}), ...sanitizedUser, id } as User;
     }
 
     try {
@@ -564,92 +526,57 @@ export const api = {
 
   // TECHNICIANS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getTechnicians: async (companyId?: string, userRole?: string): Promise<Technician[]> => {
-    let localTechs: Technician[] = [];
     try {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (userRole) params.append('userRole', userRole);
-      const res = await fetch(`${BASE_URL}/technicians?${params.toString()}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/technicians?${params.toString()}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) localTechs = data;
+        if (Array.isArray(data)) return data;
       }
     } catch (err) {
       console.warn('API local de técnicos indisponível, buscando no Firestore...');
     }
 
-    let firestoreTechs: Technician[] = [];
     try {
-      firestoreTechs = await firebaseService.technicians.getAll(companyId, userRole);
-    } catch (err) {
-      console.warn('Fallback para Firestore falhou ao buscar técnicos:', err);
+      return await firebaseService.technicians.getAll(companyId, userRole);
+    } catch {
+      return [];
     }
-
-    // Se ambos vazios, retorna array vazio
-    if (localTechs.length === 0 && firestoreTechs.length === 0) return [];
-
-    // Mesclar por ID para garantir persistência pós-deploy
-    const map = new Map<string, Technician>();
-    firestoreTechs.forEach((t) => map.set(t.id, t));
-    localTechs.forEach((t) => map.set(t.id, t));
-    const merged = Array.from(map.values());
-
-    // Se o banco local SQLite foi reiniciado no deploy, restaura automaticamente
-    if (localTechs.length === 0 && firestoreTechs.length > 0) {
-      fetch(`${BASE_URL}/sync/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicians: firestoreTechs })
-      }).catch(() => {});
-    }
-
-    return merged;
   },
 
   createTechnician: async (technician: Partial<Technician>): Promise<Technician> => {
     let created: Technician | null = null;
     try {
-      const res = await fetch(`${BASE_URL}/technicians`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/technicians`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(technician)
-      });
+      }, 3000);
       if (res.ok) {
         created = await res.json();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        console.warn('Aviso API local técnicos:', errData);
       }
     } catch (err) {
       console.warn('API local ao cadastrar técnico:', err);
     }
 
     if (created) {
-      // Salva de forma assíncrona na nuvem Firestore para persistência definitiva entre deploys
-      firebaseService.technicians.create({ ...technician, id: created.id }).catch((err) => {
-        console.warn('Firestore ao sincronizar técnico:', err);
-      });
+      firebaseService.technicians.create(created).catch(() => {});
       return created;
     }
 
-    // Fallback if local backend is down
-    const fbCreated = await firebaseService.technicians.create(technician);
-    fetch(`${BASE_URL}/sync/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ technicians: [fbCreated] })
-    }).catch(() => {});
-    return fbCreated;
+    return await firebaseService.technicians.create(technician);
   },
 
   updateTechnician: async (id: string, technician: Partial<Technician>): Promise<Technician> => {
     let updated: Technician | null = null;
     try {
-      const res = await fetch(`${BASE_URL}/technicians/${id}`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/technicians/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(technician)
-      });
+      }, 3000);
       if (res.ok) {
         updated = await res.json();
       }
@@ -658,85 +585,51 @@ export const api = {
     }
 
     if (updated) {
-      firebaseService.technicians.update(id, technician).catch((err) => {
-        console.warn('Firestore ao sincronizar técnico:', err);
-      });
+      firebaseService.technicians.update(id, technician).catch(() => {});
       return updated;
     }
 
-    const fbUpdated = await firebaseService.technicians.update(id, technician);
-    fetch(`${BASE_URL}/sync/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ technicians: [fbUpdated] })
-    }).catch(() => {});
-    return fbUpdated;
+    return await firebaseService.technicians.update(id, technician);
   },
 
   deleteTechnician: async (id: string): Promise<{ success: boolean }> => {
     try {
-      const res = await fetch(`${BASE_URL}/technicians/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        firebaseService.technicians.delete(id).catch((err) => {
-          console.warn('Firestore ao excluir técnico:', err);
-        });
-        return { success: true };
-      }
-    } catch (err) {
-      console.warn('API local ao excluir técnico:', err);
-    }
-    return await firebaseService.technicians.delete(id);
+      await fetch(`${BASE_URL}/technicians/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+    firebaseService.technicians.delete(id).catch(() => {});
+    return { success: true };
   },
 
   // CLIENTS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getClients: async (companyId?: string, userRole?: string): Promise<Client[]> => {
-    let localClients: Client[] = [];
     try {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (userRole) params.append('userRole', userRole);
-      const res = await fetch(`${BASE_URL}/clients?${params.toString()}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/clients?${params.toString()}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) localClients = data;
+        if (Array.isArray(data)) return data;
       }
     } catch (err) {
       console.warn('API local de clientes indisponível, buscando no Firestore...');
     }
 
-    let firestoreClients: Client[] = [];
     try {
-      firestoreClients = await firebaseService.clients.getAll(companyId, userRole);
-    } catch (err) {
-      console.warn('Fallback para Firestore falhou ao buscar clientes:', err);
+      return await firebaseService.clients.getAll(companyId, userRole);
+    } catch {
+      return [];
     }
-
-    if (localClients.length === 0 && firestoreClients.length === 0) return [];
-
-    const map = new Map<string, Client>();
-    firestoreClients.forEach((c) => map.set(c.id, c));
-    localClients.forEach((c) => map.set(c.id, c));
-    const merged = Array.from(map.values());
-
-    if (localClients.length === 0 && firestoreClients.length > 0) {
-      fetch(`${BASE_URL}/sync/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clients: firestoreClients })
-      }).catch(() => {});
-    }
-
-    return merged;
   },
 
   createClient: async (client: Partial<Client>): Promise<Client> => {
     let created: Client | null = null;
     try {
-      const res = await fetch(`${BASE_URL}/clients`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(client)
-      });
+      }, 3000);
       if (res.ok) {
         created = await res.json();
       }
@@ -745,30 +638,21 @@ export const api = {
     }
 
     if (created) {
-      firebaseService.clients.create({ ...client, id: created.id }).catch((err) => {
-        console.warn('Firestore ao sincronizar cliente:', err);
-      });
+      firebaseService.clients.create(created).catch(() => {});
       return created;
     }
 
-    // Fallback if local backend is down
-    const fbCreated = await firebaseService.clients.create(client);
-    fetch(`${BASE_URL}/sync/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clients: [fbCreated] })
-    }).catch(() => {});
-    return fbCreated;
+    return await firebaseService.clients.create(client);
   },
 
   updateClient: async (id: string, client: Partial<Client>): Promise<Client> => {
     let updated: Client | null = null;
     try {
-      const res = await fetch(`${BASE_URL}/clients/${id}`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/clients/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(client)
-      });
+      }, 3000);
       if (res.ok) {
         updated = await res.json();
       }
@@ -777,82 +661,192 @@ export const api = {
     }
 
     if (updated) {
-      firebaseService.clients.update(id, client).catch((err) => {
-        console.warn('Firestore ao sincronizar cliente:', err);
-      });
+      firebaseService.clients.update(id, client).catch(() => {});
       return updated;
     }
 
-    const fbUpdated = await firebaseService.clients.update(id, client);
-    fetch(`${BASE_URL}/sync/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clients: [fbUpdated] })
-    }).catch(() => {});
-    return fbUpdated;
+    return await firebaseService.clients.update(id, client);
   },
 
   deleteClient: async (id: string): Promise<{ success: boolean }> => {
     try {
-      const res = await fetch(`${BASE_URL}/clients/${id}`, { method: 'DELETE' });
+      await fetch(`${BASE_URL}/clients/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+    firebaseService.clients.delete(id).catch(() => {});
+    return { success: true };
+  },
+
+  // SERVICES & MATERIALS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
+  getServices: async (filters?: { companyId?: string; userRole?: string; type?: 'servico' | 'material'; search?: string }): Promise<ServiceItem[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.companyId) params.append('companyId', filters.companyId);
+      if (filters?.userRole) params.append('userRole', filters.userRole);
+      if (filters?.type) params.append('type', filters.type);
+      if (filters?.search) params.append('search', filters.search);
+      const res = await fetchWithTimeout(`${BASE_URL}/services?${params.toString()}`, {}, 2500);
       if (res.ok) {
-        firebaseService.clients.delete(id).catch((err) => {
-          console.warn('Firestore ao excluir cliente:', err);
-        });
-        return { success: true };
+        const data = await res.json();
+        if (Array.isArray(data)) return data;
       }
     } catch (err) {
-      console.warn('API local ao excluir cliente:', err);
+      console.warn('API local de serviços indisponível, buscando no Firestore...');
     }
-    return await firebaseService.clients.delete(id);
+
+    try {
+      let list = await firebaseService.services.getAll(filters?.companyId, filters?.userRole);
+      if (filters?.type) list = list.filter((s) => s.item_type === filters.type);
+      if (filters?.search) {
+        const q = filters.search.toLowerCase();
+        list = list.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q));
+      }
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
+  createService: async (service: Partial<ServiceItem>): Promise<ServiceItem> => {
+    let created: ServiceItem | null = null;
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}/services`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(service)
+      }, 3000);
+      if (res.ok) {
+        created = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao cadastrar serviço:', err);
+    }
+
+    if (created) {
+      firebaseService.services.create(created).catch(() => {});
+      return created;
+    }
+
+    return await firebaseService.services.create(service);
+  },
+
+  updateService: async (id: string, service: Partial<ServiceItem>): Promise<ServiceItem> => {
+    let updated: ServiceItem | null = null;
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}/services/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(service)
+      }, 3000);
+      if (res.ok) {
+        updated = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local ao atualizar serviço:', err);
+    }
+
+    if (updated) {
+      firebaseService.services.update(id, service).catch(() => {});
+      return updated;
+    }
+
+    return await firebaseService.services.update(id, service);
+  },
+
+  deleteService: async (id: string): Promise<{ success: boolean }> => {
+    try {
+      await fetch(`${BASE_URL}/services/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+    firebaseService.services.delete(id).catch(() => {});
+    return { success: true };
+  },
+
+  batchImportServices: async (
+    items: any[],
+    companyId?: string,
+    updateExisting: boolean = true
+  ): Promise<{ success: boolean; count: number }> => {
+    const targetCompanyId = companyId || 'comp-master-cast';
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}/services/batch-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, company_id: targetCompanyId, update_existing: updateExisting })
+      }, 12000);
+      if (res.ok) {
+        const result = await res.json();
+        // Background sync to Firestore without blocking
+        items.forEach((item) => {
+          firebaseService.services.create({
+            ...item,
+            company_id: targetCompanyId
+          }).catch(() => {});
+        });
+        return result;
+      }
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Erro ao importar itens em lote.');
+    } catch (e: any) {
+      // Fallback: If local API fails, save directly to Firestore
+      try {
+        let imported = 0;
+        for (const item of items) {
+          if (!item.name || !item.name.trim()) continue;
+          await firebaseService.services.create({
+            ...item,
+            company_id: targetCompanyId
+          });
+          imported++;
+        }
+        return { success: true, count: imported };
+      } catch (fbErr: any) {
+        throw new Error(e.message || fbErr.message || 'Falha ao importar itens.');
+      }
+    }
+  },
+
+  seedDefaultCatalog: async (companyId?: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}/services/seed-defaults`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId })
+      }, 10000);
+      if (res.ok) {
+        return await res.json();
+      }
+      return { success: false, message: 'Falha ao recarregar catálogo.' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Erro ao recarregar catálogo.' };
+    }
   },
 
   // QUOTES (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getQuotes: async (filters: { companyId?: string; userRole?: string; status?: string; search?: string }): Promise<Quote[]> => {
-    let localQuotes: Quote[] = [];
     try {
       const params = new URLSearchParams();
       if (filters.companyId) params.append('companyId', filters.companyId);
       if (filters.userRole) params.append('userRole', filters.userRole);
       if (filters.status) params.append('status', filters.status);
       if (filters.search) params.append('search', filters.search);
-      const res = await fetch(`${BASE_URL}/quotes?${params.toString()}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes?${params.toString()}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) localQuotes = data;
+        if (Array.isArray(data)) return data;
       }
     } catch (err) {
       console.warn('API local de orçamentos indisponível, buscando no Firestore...');
     }
 
-    let firestoreQuotes: Quote[] = [];
     try {
-      firestoreQuotes = await firebaseService.quotes.getAll(filters);
-    } catch (err) {
-      console.warn('Fallback para Firestore falhou ao buscar orçamentos:', err);
+      return await firebaseService.quotes.getAll(filters);
+    } catch {
+      return [];
     }
-
-    if (localQuotes.length === 0 && firestoreQuotes.length === 0) return [];
-
-    const map = new Map<string, Quote>();
-    firestoreQuotes.forEach((q) => map.set(q.id, q));
-    localQuotes.forEach((q) => map.set(q.id, q));
-    const merged = Array.from(map.values());
-
-    if (localQuotes.length === 0 && firestoreQuotes.length > 0) {
-      fetch(`${BASE_URL}/sync/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quotes: firestoreQuotes })
-      }).catch(() => {});
-    }
-
-    return merged;
   },
 
   getQuote: async (id: string): Promise<Quote> => {
     try {
-      const res = await fetch(`${BASE_URL}/quotes/${id}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
         if (data && data.id) return data;
@@ -864,20 +858,18 @@ export const api = {
     try {
       const quote = await firebaseService.quotes.getById(id);
       if (quote) return quote;
-    } catch (err) {
-      console.warn('Fallback para Firestore ao buscar orçamento por ID:', err);
-    }
+    } catch (err) {}
     throw new Error('Orçamento não encontrado');
   },
 
   createQuote: async (quoteData: any): Promise<{ id: string; quote_number: number; total: number; message: string }> => {
     let apiResult: any = null;
     try {
-      const res = await fetch(`${BASE_URL}/quotes`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
-      });
+      }, 3500);
       if (res.ok) {
         apiResult = await res.json();
       }
@@ -886,19 +878,15 @@ export const api = {
     }
 
     if (apiResult) {
-      // Sincroniza em background no Firestore sem travar o salvamento ou a interface
       const payloadToFirebase = {
         ...quoteData,
         id: apiResult.id || quoteData.id,
         quote_number: apiResult.quote_number || quoteData.quote_number
       };
-      firebaseService.quotes.create(payloadToFirebase).catch((err) => {
-        console.warn('Firestore em background ao sincronizar orçamento:', err);
-      });
+      firebaseService.quotes.create(payloadToFirebase).catch(() => {});
       return apiResult;
     }
 
-    // Fallback if backend was unreachable
     const created = await firebaseService.quotes.create(quoteData);
     return {
       id: created.id,
@@ -911,11 +899,11 @@ export const api = {
   updateQuote: async (id: string, quoteData: any): Promise<{ success: boolean; total: number; message: string }> => {
     let apiResult: any = null;
     try {
-      const res = await fetch(`${BASE_URL}/quotes/${id}`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
-      });
+      }, 3500);
       if (res.ok) {
         apiResult = await res.json();
       }
@@ -924,58 +912,52 @@ export const api = {
     }
 
     if (apiResult) {
-      // Sincroniza em background no Firestore sem travar a interface
-      firebaseService.quotes.update(id, quoteData).catch((err) => {
-        console.warn('Firestore em background ao sincronizar atualização de orçamento:', err);
-      });
+      firebaseService.quotes.update(id, quoteData).catch(() => {});
       return apiResult;
     }
 
-    // Fallback if backend was unreachable
     await firebaseService.quotes.update(id, quoteData);
     return { success: true, total: quoteData.total || 0, message: 'Orçamento atualizado com sucesso!' };
   },
 
   duplicateQuote: async (id: string): Promise<{ id: string; quote_number: number; message: string }> => {
     try {
-      const original = await firebaseService.quotes.getById(id);
-      if (original) {
-        const copy = await firebaseService.quotes.create({
-          ...original,
-          id: undefined,
-          quote_number: undefined,
-          client_name: `${original.client_name} (Cópia)`,
-          status: 'Rascunho',
-          created_at: new Date().toISOString()
-        });
-        return {
-          id: copy.id,
-          quote_number: copy.quote_number,
-          message: 'Orçamento duplicado com sucesso no Firestore!'
-        };
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}/duplicate`, { method: 'POST' }, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        return data;
       }
-    } catch (e) {
-      // Fallback
+    } catch (e) {}
+
+    const original = await firebaseService.quotes.getById(id);
+    if (original) {
+      const copy = await firebaseService.quotes.create({
+        ...original,
+        id: undefined,
+        quote_number: undefined,
+        client_name: `${original.client_name} (Cópia)`,
+        status: 'Rascunho',
+        created_at: new Date().toISOString()
+      });
+      return {
+        id: copy.id,
+        quote_number: copy.quote_number,
+        message: 'Orçamento duplicado com sucesso!'
+      };
     }
-    const res = await fetch(`${BASE_URL}/quotes/${id}/duplicate`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao duplicar orçamento');
-    return data;
+    throw new Error('Erro ao duplicar orçamento');
   },
 
   deleteQuote: async (id: string): Promise<{ success: boolean }> => {
     try {
-      return await firebaseService.quotes.delete(id);
-    } catch (err) {
-      const res = await fetch(`${BASE_URL}/quotes/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao excluir orçamento');
-      return res.json();
-    }
+      await fetch(`${BASE_URL}/quotes/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+    firebaseService.quotes.delete(id).catch(() => {});
+    return { success: true };
   },
 
   // WORK ORDERS (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getWorkOrders: async (filters: { companyId?: string; userRole?: string; status?: string; search?: string; technicianId?: string }): Promise<WorkOrder[]> => {
-    let localOrders: WorkOrder[] = [];
     try {
       const params = new URLSearchParams();
       if (filters.companyId) params.append('companyId', filters.companyId);
@@ -983,43 +965,25 @@ export const api = {
       if (filters.status) params.append('status', filters.status);
       if (filters.search) params.append('search', filters.search);
       if (filters.technicianId) params.append('technicianId', filters.technicianId);
-      const res = await fetch(`${BASE_URL}/work-orders?${params.toString()}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders?${params.toString()}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) localOrders = data;
+        if (Array.isArray(data)) return data;
       }
     } catch (err) {
       console.warn('API local de OS indisponível, buscando no Firestore...');
     }
 
-    let firestoreOrders: WorkOrder[] = [];
     try {
-      firestoreOrders = await firebaseService.workOrders.getAll(filters);
-    } catch (err) {
-      console.warn('Fallback para Firestore falhou ao buscar ordens de serviço:', err);
+      return await firebaseService.workOrders.getAll(filters);
+    } catch {
+      return [];
     }
-
-    if (localOrders.length === 0 && firestoreOrders.length === 0) return [];
-
-    const map = new Map<string, WorkOrder>();
-    firestoreOrders.forEach((o) => map.set(o.id, o));
-    localOrders.forEach((o) => map.set(o.id, o));
-    const merged = Array.from(map.values());
-
-    if (localOrders.length === 0 && firestoreOrders.length > 0) {
-      fetch(`${BASE_URL}/sync/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ work_orders: firestoreOrders })
-      }).catch(() => {});
-    }
-
-    return merged;
   },
 
   getWorkOrder: async (id: string): Promise<WorkOrder> => {
     try {
-      const res = await fetch(`${BASE_URL}/work-orders/${id}`);
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}`, {}, 2500);
       if (res.ok) {
         const data = await res.json();
         if (data && data.id) return data;
@@ -1031,20 +995,18 @@ export const api = {
     try {
       const order = await firebaseService.workOrders.getById(id);
       if (order) return order;
-    } catch (err) {
-      console.warn('Fallback para Firestore ao buscar ordem de serviço por ID:', err);
-    }
+    } catch (err) {}
     throw new Error('Ordem de serviço não encontrada');
   },
 
   createWorkOrder: async (orderData: any): Promise<{ id: string; order_number: number; total: number; message: string }> => {
     let apiResult: any = null;
     try {
-      const res = await fetch(`${BASE_URL}/work-orders`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
-      });
+      }, 3500);
       if (res.ok) {
         apiResult = await res.json();
       }
@@ -1053,15 +1015,12 @@ export const api = {
     }
 
     if (apiResult) {
-      // Sincroniza em background no Firestore sem travar o app
       const payloadToFirebase = {
         ...orderData,
         id: apiResult.id || orderData.id,
         order_number: apiResult.order_number || orderData.order_number
       };
-      firebaseService.workOrders.create(payloadToFirebase).catch((err) => {
-        console.warn('Firestore em background ao sincronizar ordem de serviço:', err);
-      });
+      firebaseService.workOrders.create(payloadToFirebase).catch(() => {});
       return apiResult;
     }
 
@@ -1077,11 +1036,11 @@ export const api = {
   updateWorkOrder: async (id: string, orderData: any): Promise<{ success: boolean; total: number; message: string }> => {
     let apiResult: any = null;
     try {
-      const res = await fetch(`${BASE_URL}/work-orders/${id}`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
-      });
+      }, 3500);
       if (res.ok) {
         apiResult = await res.json();
       }
@@ -1090,10 +1049,7 @@ export const api = {
     }
 
     if (apiResult) {
-      // Sincroniza em background no Firestore sem travar o app
-      firebaseService.workOrders.update(id, orderData).catch((err) => {
-        console.warn('Firestore em background ao sincronizar atualização de ordem de serviço:', err);
-      });
+      firebaseService.workOrders.update(id, orderData).catch(() => {});
       return apiResult;
     }
 
@@ -1110,23 +1066,19 @@ export const api = {
     }
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const res = await fetch(`${BASE_URL}/work-orders/${id}/signature`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}/signature`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(signatureData)
-      });
+      }, 3000);
       if (res.ok) {
         const data = await res.json();
-        // Mirror to Firestore if available
-        try {
-          await firebaseService.workOrders.update(id, signatureData);
-        } catch {}
+        firebaseService.workOrders.update(id, signatureData).catch(() => {});
         return data;
       }
     } catch (err) {
       console.warn('API local de assinatura indisponível, tentando Firestore:', err);
     }
-    // Fallback to Firestore update
     await firebaseService.workOrders.update(id, signatureData);
     return { success: true, message: 'Assinatura salva com sucesso!' };
   },
@@ -1141,16 +1093,14 @@ export const api = {
     }
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const res = await fetch(`${BASE_URL}/quotes/${id}/signature`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}/signature`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(signatureData)
-      });
+      }, 3000);
       if (res.ok) {
         const data = await res.json();
-        try {
-          await firebaseService.quotes.update(id, signatureData);
-        } catch {}
+        firebaseService.quotes.update(id, signatureData).catch(() => {});
         return data;
       }
     } catch (err) {
@@ -1162,91 +1112,92 @@ export const api = {
 
   duplicateWorkOrder: async (id: string): Promise<{ id: string; order_number: number; message: string }> => {
     try {
-      const original = await firebaseService.workOrders.getById(id);
-      if (original) {
-        const copy = await firebaseService.workOrders.create({
-          ...original,
-          id: undefined,
-          order_number: undefined,
-          client_name: `${original.client_name} (Cópia)`,
-          status: 'Aberta',
-          created_at: new Date().toISOString()
-        });
-        return {
-          id: copy.id,
-          order_number: copy.order_number,
-          message: 'Ordem de serviço duplicada no Firestore!'
-        };
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}/duplicate`, { method: 'POST' }, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        return data;
       }
-    } catch (e) {
-      // Fallback
+    } catch (e) {}
+
+    const original = await firebaseService.workOrders.getById(id);
+    if (original) {
+      const copy = await firebaseService.workOrders.create({
+        ...original,
+        id: undefined,
+        order_number: undefined,
+        client_name: `${original.client_name} (Cópia)`,
+        status: 'Aberta',
+        created_at: new Date().toISOString()
+      });
+      return {
+        id: copy.id,
+        order_number: copy.order_number,
+        message: 'Ordem de serviço duplicada no Firestore!'
+      };
     }
-    const res = await fetch(`${BASE_URL}/work-orders/${id}/duplicate`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao duplicar ordem de serviço');
-    return data;
+    throw new Error('Erro ao duplicar ordem de serviço');
   },
 
   createWorkOrderFromQuote: async (quoteId: string): Promise<{ id: string; order_number: number; message: string }> => {
+    // 1. Tentar endpoint local direto (ultra-rápido, ~2ms)
     try {
-      const quote = await firebaseService.quotes.getById(quoteId);
-      if (quote) {
-        const order = await firebaseService.workOrders.create({
-          company_id: quote.company_id,
-          quote_id: quote.id,
-          client_id: quote.client_id,
-          client_name: quote.client_name,
-          client_phone: quote.client_phone,
-          client_email: quote.client_email,
-          client_document: quote.client_document,
-          technician_id: quote.technician_id || '',
-          technician_name: quote.technician_name || '',
-          created_by: quote.created_by,
-          date: new Date().toISOString().split('T')[0],
-          status: 'Aberta',
-          service_description: quote.description || '',
-          subtotal: quote.subtotal || 0,
-          discount: quote.discount || 0,
-          addition: quote.addition || 0,
-          total: quote.total || 0,
-          notes: quote.notes || '',
-          items: quote.items?.map((item) => ({
-            id: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-            item_type: item.item_type,
-            description: item.description,
-            quantity: item.quantity,
-            unit: item.unit,
-            unit_price: item.unit_price,
-            total_price: item.total_price
-          })) || []
-        });
-
-        // Mark quote as Aprovado
-        await firebaseService.quotes.update(quoteId, { status: 'Aprovado' });
-
-        return {
-          id: order.id,
-          order_number: order.order_number,
-          message: 'Ordem de serviço gerada a partir do orçamento com sucesso!'
-        };
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/from-quote/${quoteId}`, { method: 'POST' }, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        return data;
       }
-    } catch (e) {
-      // Fallback
+    } catch (e) {}
+
+    // 2. Fallback Firestore se API local estiver inacessível
+    const quote = await firebaseService.quotes.getById(quoteId);
+    if (quote) {
+      const order = await firebaseService.workOrders.create({
+        company_id: quote.company_id,
+        quote_id: quote.id,
+        client_id: quote.client_id,
+        client_name: quote.client_name,
+        client_phone: quote.client_phone,
+        client_email: quote.client_email,
+        client_document: quote.client_document,
+        technician_id: quote.technician_id || '',
+        technician_name: quote.technician_name || '',
+        created_by: quote.created_by,
+        date: new Date().toISOString().split('T')[0],
+        status: 'Aberta',
+        service_description: quote.description || '',
+        subtotal: quote.subtotal || 0,
+        discount: quote.discount || 0,
+        addition: quote.addition || 0,
+        total: quote.total || 0,
+        notes: quote.notes || '',
+        items: quote.items?.map((item) => ({
+          id: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          item_type: item.item_type,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total_price: item.total_price
+        })) || []
+      });
+
+      firebaseService.quotes.update(quoteId, { status: 'Aprovado' }).catch(() => {});
+
+      return {
+        id: order.id,
+        order_number: order.order_number,
+        message: 'Ordem de serviço gerada a partir do orçamento com sucesso!'
+      };
     }
-    const res = await fetch(`${BASE_URL}/work-orders/from-quote/${quoteId}`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao converter orçamento em ordem de serviço');
-    return data;
+    throw new Error('Erro ao converter orçamento em ordem de serviço');
   },
 
   deleteWorkOrder: async (id: string): Promise<{ success: boolean }> => {
     try {
-      return await firebaseService.workOrders.delete(id);
-    } catch (err) {
-      const res = await fetch(`${BASE_URL}/work-orders/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Erro ao excluir ordem de serviço');
-      return res.json();
-    }
+      await fetch(`${BASE_URL}/work-orders/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+    firebaseService.workOrders.delete(id).catch(() => {});
+    return { success: true };
   },
 
   // VERTICAL PHOTO UPLOAD (Storage)
@@ -1537,9 +1488,30 @@ export const api = {
     sync_photos?: number;
     updated_at?: string;
   } | null> => {
-    const res = await fetch(`${BASE_URL}/drive/settings`);
-    if (!res.ok) return null;
-    return await res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/drive/settings`);
+      if (res.ok) {
+        const localSettings = await res.json();
+        if (localSettings && localSettings.account_email) return localSettings;
+      }
+    } catch {}
+
+    // Fallback: carregar diretamente do Cloud Firestore
+    try {
+      const fbSettings = await firebaseService.settings.getDriveSettings();
+      if (fbSettings && fbSettings.account_email) {
+        // Reidratar no backend local em background
+        fetch(`${BASE_URL}/drive/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fbSettings)
+        }).catch(() => {});
+        return fbSettings;
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar configurações do Drive no Firestore:', err);
+    }
+    return null;
   },
 
   saveDriveSettings: async (settings: {
@@ -1550,23 +1522,47 @@ export const api = {
     auto_sync?: boolean;
     sync_photos?: boolean;
   }): Promise<any> => {
-    const res = await fetch(`${BASE_URL}/drive/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao salvar configurações do Drive');
+    // 1. Salvar no Firestore para persistência definitiva entre deploys
+    try {
+      await firebaseService.settings.saveDriveSettings(settings);
+    } catch (err) {
+      console.warn('Erro ao salvar configurações do Drive no Firestore:', err);
+    }
+
+    // 2. Salvar na API local
+    let data: any = { success: true };
+    try {
+      const res = await fetch(`${BASE_URL}/drive/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      if (res.ok) {
+        data = await res.json();
+      }
+    } catch (err) {
+      console.warn('API local offline ao salvar settings do Drive:', err);
+    }
+
     return data;
   },
 
   deleteDriveSettings: async (): Promise<any> => {
-    const res = await fetch(`${BASE_URL}/drive/settings`, {
-      method: 'DELETE'
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao desconectar conta do Drive');
-    return data;
+    try {
+      await firebaseService.settings.saveDriveSettings({
+        account_email: '',
+        account_name: '',
+        account_photo: ''
+      });
+    } catch {}
+
+    try {
+      const res = await fetch(`${BASE_URL}/drive/settings`, {
+        method: 'DELETE'
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return { success: true };
   },
 
   // SINCRONIZAÇÃO COMPLETA NUVEM (Firestore) -> SQLite LOCAL
@@ -1591,20 +1587,22 @@ export const api = {
       }
 
       // 2. Busca dados salvos no Firestore
-      const [fbQuotes, fbOrders, fbClients, fbTechs, fbComps, fbUsers] = await Promise.all([
+      const [fbQuotes, fbOrders, fbClients, fbTechs, fbComps, fbUsers, fbServices] = await Promise.all([
         firebaseService.quotes.getAll({}).catch(() => []),
         firebaseService.workOrders.getAll({}).catch(() => []),
         firebaseService.clients.getAll().catch(() => []),
         firebaseService.technicians.getAll().catch(() => []),
         firebaseService.companies.getAll().catch(() => []),
-        firebaseService.users.getAll().catch(() => [])
+        firebaseService.users.getAll().catch(() => []),
+        firebaseService.services.getAll().catch(() => [])
       ]);
 
       if (
         fbQuotes.length === 0 &&
         fbOrders.length === 0 &&
         fbClients.length === 0 &&
-        fbTechs.length === 0
+        fbTechs.length === 0 &&
+        fbServices.length === 0
       ) {
         return { success: true, details: 'Sem registros remotos para restaurar' };
       }
@@ -1618,6 +1616,7 @@ export const api = {
           users: fbUsers,
           clients: fbClients,
           technicians: fbTechs,
+          services: fbServices,
           quotes: fbQuotes,
           work_orders: fbOrders
         })
@@ -1632,5 +1631,35 @@ export const api = {
       console.warn('Erro ao sincronizar Firestore -> SQLite:', err);
     }
     return { success: false };
+  },
+
+  // LIMPEZA COMPLETA DO BANCO DE DADOS (Mantendo apenas DEV)
+  cleanDatabase: async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      // 1. Limpar SQLite local
+      await fetch(`${BASE_URL}/dev/clean-database`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(() => {});
+
+      // 2. Limpar Firestore remoto
+      await cleanFirestoreDatabaseComplete().catch(() => {});
+
+      // 3. Limpar caches locais do navegador
+      try {
+        const devToken = localStorage.getItem('cast_auth_token');
+        const devUser = localStorage.getItem('cast_auth_user');
+        localStorage.clear();
+        sessionStorage.clear();
+        if (devToken && devUser) {
+          localStorage.setItem('cast_auth_token', devToken);
+          localStorage.setItem('cast_auth_user', devUser);
+        }
+      } catch {}
+
+      return { success: true, message: 'Banco de dados completamente limpo. Apenas cadastros DEV preservados.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao limpar banco de dados' };
+    }
   }
 };

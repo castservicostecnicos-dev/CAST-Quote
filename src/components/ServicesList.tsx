@@ -13,8 +13,6 @@ import {
   XCircle,
   AlertCircle,
   Building,
-  Users,
-  UserCheck,
   ShieldCheck,
   Eye,
   FileSpreadsheet,
@@ -42,6 +40,7 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
   const [itemToEdit, setItemToEdit] = useState<ServiceItem | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Form inputs
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -96,6 +95,30 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
       alert('Erro ao recarregar catálogo: ' + err.message);
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleClearCatalog = async () => {
+    if (services.length === 0) return;
+    if (
+      !confirm(
+        'Tem certeza que deseja LIMPAR todo o catálogo de serviços e materiais? Todos os itens cadastrados serão excluídos do sistema.'
+      )
+    ) {
+      return;
+    }
+
+    setIsClearing(true);
+    try {
+      const targetCompany = isDev ? undefined : (activeCompany?.id || undefined);
+      await api.clearCatalog(targetCompany);
+      setServices([]);
+      showFeedback('Catálogo de serviços e materiais limpo com sucesso!');
+      await loadServices();
+    } catch (err: any) {
+      alert('Erro ao limpar catálogo: ' + (err.message || 'Falha ao processar'));
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -267,34 +290,6 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
         </div>
       )}
 
-      {/* Cadastros Hub Switcher */}
-      {onSelectTab && (
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-200 overflow-x-auto">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Cadastros:</span>
-          <button
-            onClick={() => onSelectTab('clients')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
-          >
-            <Users className="w-3.5 h-3.5 text-slate-500" />
-            <span>Clientes</span>
-          </button>
-          <button
-            onClick={() => onSelectTab('technicians')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
-          >
-            <UserCheck className="w-3.5 h-3.5 text-slate-500" />
-            <span>Técnicos</span>
-          </button>
-          <button
-            onClick={() => onSelectTab('services')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-2xs cursor-pointer"
-          >
-            <Boxes className="w-3.5 h-3.5" />
-            <span>Serviços & Materiais ({services.length})</span>
-          </button>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -325,6 +320,16 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
           >
             <RotateCcw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
             <span>{isSeeding ? 'Carregando...' : 'Catálogo Padrão'}</span>
+          </button>
+
+          <button
+            onClick={handleClearCatalog}
+            disabled={isClearing || services.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-xs font-bold text-rose-700 border border-rose-200 transition active:scale-95 cursor-pointer disabled:opacity-40"
+            title="Limpar todos os serviços e materiais do catálogo"
+          >
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span>{isClearing ? 'Limpando...' : 'Limpar Catálogo'}</span>
           </button>
 
           <button

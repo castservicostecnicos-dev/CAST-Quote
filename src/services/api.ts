@@ -820,6 +820,29 @@ export const api = {
     }
   },
 
+  clearCatalog: async (companyId?: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}/services/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId })
+      }, 10000);
+      if (res.ok) {
+        firebaseService.services.clearAll(companyId).catch(() => {});
+        return await res.json();
+      }
+      return { success: false, message: 'Falha ao limpar catálogo.' };
+    } catch (e: any) {
+      // Fallback: clear directly from Firestore
+      try {
+        await firebaseService.services.clearAll(companyId);
+        return { success: true, message: 'Catálogo limpo com sucesso.' };
+      } catch (fbErr: any) {
+        return { success: false, message: e.message || fbErr.message || 'Erro ao limpar catálogo.' };
+      }
+    }
+  },
+
   // QUOTES (Local SQLite API + Firestore mirror + Auto Cloud Persistence)
   getQuotes: async (filters: { companyId?: string; userRole?: string; status?: string; search?: string }): Promise<Quote[]> => {
     try {
@@ -864,17 +887,22 @@ export const api = {
 
   createQuote: async (quoteData: any): Promise<{ id: string; quote_number: number; total: number; message: string }> => {
     let apiResult: any = null;
+    let localError: Error | null = null;
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/quotes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
-      }, 3500);
+      }, 10000);
       if (res.ok) {
         apiResult = await res.json();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        localError = new Error(errJson.error || `Erro ao salvar orçamento: status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('API local ao criar orçamento:', err);
+      localError = err;
     }
 
     if (apiResult) {
@@ -887,28 +915,41 @@ export const api = {
       return apiResult;
     }
 
-    const created = await firebaseService.quotes.create(quoteData);
-    return {
-      id: created.id,
-      quote_number: created.quote_number,
-      total: created.total,
-      message: 'Orçamento salvo com sucesso!'
-    };
+    if (localError && !localError.message?.includes('fetch') && !localError.message?.includes('network') && !localError.message?.includes('timeout') && !localError.message?.includes('Failed')) {
+      throw localError;
+    }
+
+    try {
+      const created = await firebaseService.quotes.create(quoteData);
+      return {
+        id: created.id,
+        quote_number: created.quote_number,
+        total: created.total,
+        message: 'Orçamento salvo com sucesso!'
+      };
+    } catch (fbErr: any) {
+      throw localError || fbErr || new Error('Erro ao salvar orçamento');
+    }
   },
 
   updateQuote: async (id: string, quoteData: any): Promise<{ success: boolean; total: number; message: string }> => {
     let apiResult: any = null;
+    let localError: Error | null = null;
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData)
-      }, 3500);
+      }, 10000);
       if (res.ok) {
         apiResult = await res.json();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        localError = new Error(errJson.error || `Erro ao atualizar orçamento: status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('API local ao atualizar orçamento:', err);
+      localError = err;
     }
 
     if (apiResult) {
@@ -916,8 +957,20 @@ export const api = {
       return apiResult;
     }
 
-    await firebaseService.quotes.update(id, quoteData);
-    return { success: true, total: quoteData.total || 0, message: 'Orçamento atualizado com sucesso!' };
+    if (localError && !localError.message?.includes('fetch') && !localError.message?.includes('network') && !localError.message?.includes('timeout') && !localError.message?.includes('Failed')) {
+      throw localError;
+    }
+
+    try {
+      const updated = await firebaseService.quotes.update(id, quoteData);
+      return {
+        success: true,
+        total: updated.total,
+        message: 'Orçamento atualizado com sucesso!'
+      };
+    } catch (fbErr: any) {
+      throw localError || fbErr || new Error('Erro ao atualizar orçamento');
+    }
   },
 
   duplicateQuote: async (id: string): Promise<{ id: string; quote_number: number; message: string }> => {
@@ -1001,17 +1054,22 @@ export const api = {
 
   createWorkOrder: async (orderData: any): Promise<{ id: string; order_number: number; total: number; message: string }> => {
     let apiResult: any = null;
+    let localError: Error | null = null;
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/work-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
-      }, 3500);
+      }, 10000);
       if (res.ok) {
         apiResult = await res.json();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        localError = new Error(errJson.error || `Erro ao salvar ordem de serviço: status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('API local ao criar ordem de serviço:', err);
+      localError = err;
     }
 
     if (apiResult) {
@@ -1024,28 +1082,41 @@ export const api = {
       return apiResult;
     }
 
-    const created = await firebaseService.workOrders.create(orderData);
-    return {
-      id: created.id,
-      order_number: created.order_number,
-      total: created.total,
-      message: 'Ordem de serviço salva com sucesso!'
-    };
+    if (localError && !localError.message?.includes('fetch') && !localError.message?.includes('network') && !localError.message?.includes('timeout') && !localError.message?.includes('Failed')) {
+      throw localError;
+    }
+
+    try {
+      const created = await firebaseService.workOrders.create(orderData);
+      return {
+        id: created.id,
+        order_number: created.order_number,
+        total: created.total,
+        message: 'Ordem de serviço salva com sucesso!'
+      };
+    } catch (fbErr: any) {
+      throw localError || fbErr || new Error('Erro ao salvar ordem de serviço');
+    }
   },
 
   updateWorkOrder: async (id: string, orderData: any): Promise<{ success: boolean; total: number; message: string }> => {
     let apiResult: any = null;
+    let localError: Error | null = null;
     try {
       const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
-      }, 3500);
+      }, 10000);
       if (res.ok) {
         apiResult = await res.json();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        localError = new Error(errJson.error || `Erro ao atualizar ordem de serviço: status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('API local ao atualizar ordem de serviço:', err);
+      localError = err;
     }
 
     if (apiResult) {
@@ -1053,7 +1124,20 @@ export const api = {
       return apiResult;
     }
 
-    return { success: true, total: orderData.total || 0, message: 'Ordem de serviço atualizada com sucesso!' };
+    if (localError && !localError.message?.includes('fetch') && !localError.message?.includes('network') && !localError.message?.includes('timeout') && !localError.message?.includes('Failed')) {
+      throw localError;
+    }
+
+    try {
+      const updated = await firebaseService.workOrders.update(id, orderData);
+      return {
+        success: true,
+        total: updated.total,
+        message: 'Ordem de serviço atualizada com sucesso!'
+      };
+    } catch (fbErr: any) {
+      throw localError || fbErr || new Error('Erro ao atualizar ordem de serviço');
+    }
   },
 
   saveWorkOrderSignature: async (

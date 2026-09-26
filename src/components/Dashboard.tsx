@@ -278,18 +278,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               )}
 
-              {isDev && onOpenDriveSettings && (
-                <button
-                  type="button"
-                  id="btn-dash-drive-settings"
-                  onClick={onOpenDriveSettings}
-                  className="flex items-center gap-2 rounded-xl bg-purple-900/90 hover:bg-purple-800 px-4 py-2.5 text-xs font-bold text-white border border-purple-400/40 shadow-md transition active:scale-95"
-                  title="Configurar Conta Google Drive de Arquivamento"
-                >
-                  <Cloud className="w-4 h-4 text-purple-300" />
-                  <span>Conta Google Drive (DEV)</span>
-                </button>
-              )}
 
               {isSupervisor && (
                 <button
@@ -352,38 +340,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           )}
 
-          {/* DEV Google Drive Repository Status Banner */}
-          {isDev && onOpenDriveSettings && (
-            <div className="rounded-2xl bg-white border border-purple-200 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center flex-none border border-purple-200">
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-bold text-slate-900">
-                      Conta do Google Drive para Arquivamento Central
-                    </h3>
-                    <span className="px-2 py-0.2 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
-                      Armazenamento em Nuvem
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Defina ou troque qual conta Google (login/senha) receberá os arquivos PDF e fotos com códigos únicos de todos os clientes.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={onOpenDriveSettings}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs flex-none active:scale-95"
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                <span>Definir / Trocar Conta Drive</span>
-              </button>
-            </div>
-          )}
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

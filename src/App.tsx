@@ -229,11 +229,11 @@ function MainApp() {
           />
         )}
 
-        {activeSafeTab === 'clients' && <ClientsList onSelectTab={setCurrentTab} />}
+        {activeSafeTab === 'clients' && <ClientsList />}
 
-        {activeSafeTab === 'technicians' && <TechniciansList onSelectTab={setCurrentTab} />}
+        {activeSafeTab === 'technicians' && <TechniciansList />}
 
-        {activeSafeTab === 'services' && <ServicesList onSelectTab={setCurrentTab} />}
+        {activeSafeTab === 'services' && <ServicesList />}
 
         {activeSafeTab === 'users' && <UsersList />}
 
@@ -297,12 +297,12 @@ function MainApp() {
                   setShareDoc(pdfDoc);
                   setShareModalOpen(true);
                 }}
-                onOpenDrive={() => {
+                onOpenDrive={(user?.role === 'ADM' || user?.role === 'DEV') ? () => {
                   setPdfModalOpen(false);
                   setDriveType(pdfType);
                   setDriveDoc(pdfDoc);
                   setDriveModalOpen(true);
-                }}
+                } : undefined}
               />
             )}
 

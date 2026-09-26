@@ -697,6 +697,26 @@ export const firebaseServices = {
       console.warn('Erro ao deletar serviço no Firestore:', err);
     }
     return { success: true };
+  },
+
+  async clearAll(companyId?: string): Promise<{ success: boolean }> {
+    try {
+      const coll = collection(db, 'services');
+      let q = query(coll);
+      if (companyId) {
+        q = query(coll, where('company_id', '==', companyId));
+      }
+      const snap = await withTimeout(getDocs(q), 10000, null);
+      if (snap) {
+        for (const d of snap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+      return { success: true };
+    } catch (err) {
+      console.warn('Erro ao limpar serviços no Firestore:', err);
+      return { success: false };
+    }
   }
 };
 

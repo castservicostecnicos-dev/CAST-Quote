@@ -420,7 +420,26 @@ function initSchema(db: Database) {
       );
     }
 
-    // Auto-seed removed to respect user requests to clear the catalog.
+    // Ensure at least one default client and technician exist for initial operations
+    const clientCount = queryOne(`SELECT COUNT(*) as count FROM clients`);
+    if (!clientCount || Number(clientCount.count) === 0) {
+      db.run(
+        `INSERT INTO clients (id, company_id, name, email, phone, address, city, state, notes, created_at)
+         VALUES ('cli-padrao-01', 'comp-master-cast', 'Cliente Consumidor / Geral', 'cliente@exemplo.com', '(11) 98765-4321', 'São Paulo', 'São Paulo', 'SP', 'Cliente padrão do sistema', ?)`,
+        [nowIso]
+      );
+    }
+
+    const techCount = queryOne(`SELECT COUNT(*) as count FROM technicians`);
+    if (!techCount || Number(techCount.count) === 0) {
+      db.run(
+        `INSERT INTO technicians (id, company_id, name, phone, email, role_title, active, created_at)
+         VALUES ('tech-padrao-01', 'comp-master-cast', 'Técnico Especialista Principal', '(11) 97777-6666', 'tecnico@castquote.com', 'Técnico Líder', 1, ?)`,
+        [nowIso]
+      );
+    }
+
+    // Auto-seed of services removed to respect user requests to clear the catalog.
     // Seeding can be triggered manually via UI button or API endpoint.
   } catch (err) {
     console.error('Error ensuring accounts and company defaults:', err);

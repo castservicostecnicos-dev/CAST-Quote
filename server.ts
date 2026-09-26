@@ -1105,6 +1105,17 @@ async function startServer() {
     }
   });
 
+  // Clear catalog of services and materials
+  app.post('/api/services/clear', (req: Request, res: Response) => {
+    try {
+      const { company_id } = req.body;
+      clearCatalog(company_id);
+      return res.json({ success: true, message: 'Catálogo de serviços e materiais limpo com sucesso.' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ==========================================
   // QUOTES (ORÇAMENTOS) ROUTES
   // ==========================================
@@ -1212,12 +1223,33 @@ async function startServer() {
       }
       if (!effectiveCompanyId) {
         const comp = queryOne(`SELECT id FROM companies WHERE active = 1 LIMIT 1`) || queryOne(`SELECT id FROM companies LIMIT 1`);
-        effectiveCompanyId = comp?.id || 'comp-cast';
+        effectiveCompanyId = comp?.id || 'comp-master-cast';
       }
 
       const effectiveDescription = (description && description.trim()) ||
         (Array.isArray(items) && items[0]?.description && items[0].description.trim()) ||
         'Orçamento de serviços técnicos especializados';
+
+      // Ensure client exists or fallback
+      let effectiveClientId = client_id;
+      let client = queryOne(`SELECT * FROM clients WHERE id = ?`, [effectiveClientId]);
+      if (!client) {
+        const existingByName = queryOne(`SELECT * FROM clients WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))`, [effectiveClientId]);
+        if (existingByName) {
+          client = existingByName;
+          effectiveClientId = existingByName.id;
+        } else {
+          const newClientId = typeof effectiveClientId === 'string' && effectiveClientId.startsWith('cli-') ? effectiveClientId : `cli-${Date.now()}`;
+          const clientName = req.body.client_name || (typeof effectiveClientId === 'string' && effectiveClientId.trim().length > 0 ? effectiveClientId.trim() : 'Cliente Geral');
+          const nowStr = new Date().toISOString();
+          runSql(
+            `INSERT INTO clients (id, company_id, name, created_at) VALUES (?, ?, ?, ?)`,
+            [newClientId, effectiveCompanyId, clientName, nowStr]
+          );
+          effectiveClientId = newClientId;
+          client = { id: newClientId, name: clientName };
+        }
+      }
 
       // Generate sequential quote number per company
       const lastQuote = queryOne(`SELECT max(quote_number) as max_num FROM quotes WHERE company_id = ?`, [effectiveCompanyId]);
@@ -1246,7 +1278,7 @@ async function startServer() {
           id,
           effectiveCompanyId,
           nextNumber,
-          client_id,
+          effectiveClientId,
           technician_id || null,
           created_by || 'Sistema',
           date || now.split('T')[0],
@@ -1284,17 +1316,22 @@ async function startServer() {
         runSql(
           `INSERT INTO quote_photos (id, quote_id, company_id, url, caption, width, height, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [photoId, id, company_id, photo.url, photo.caption || '', photo.width || 600, photo.height || 900, now]
+          [photoId, id, effectiveCompanyId, photo.url, photo.caption || '', photo.width || 600, photo.height || 900, now]
         );
       });
 
-      // Create notification log
-      const client = queryOne(`SELECT name FROM clients WHERE id = ?`, [client_id]);
-      runSql(
-        `INSERT INTO notifications (id, company_id, title, message, channel, recipient, status, created_at)
-         VALUES (?, ?, ?, ?, 'system', '', 'sent', ?)`,
-        [`notif-${Date.now()}`, company_id, `Novo Orçamento #${nextNumber} Criado`, `Orçamento para ${client?.name || 'Cliente'} no valor de R$ ${total.toFixed(2)} gerado com sucesso.`, now]
-      );
+      // Create notification log safely
+      try {
+        runSql(
+          `INSERT INTO notifications (id, company_id, title, message, channel, recipient, status, created_at)
+           VALUES (?, ?, ?, ?, 'system', '', 'sent', ?)`,
+          [`notif-${Date.now()}`, effectiveCompanyId, `Novo Orçamento #${nextNumber} Criado`, `Orçamento para ${client?.name || 'Cliente'} no valor de R$ ${total.toFixed(2)} gerado com sucesso.`, now]
+        );
+      } catch (notifErr) {
+        console.warn('Aviso ao registrar notificação de orçamento:', notifErr);
+      }
+
+      saveDatabase();
 
       return res.status(201).json({ id, quote_number: nextNumber, total, message: 'Orçamento criado com sucesso!' });
     } catch (err: any) {

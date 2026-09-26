@@ -437,21 +437,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <span>Configurações & Logomarca</span>
                     </button>
 
-                    {/* Google Drive Designated Account */}
-                    {(isDev || isAdmin || isManager) && onOpenDriveSettings && (
-                      <button
-                        type="button"
-                        id="btn-open-drive-settings-menu"
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          onOpenDriveSettings();
-                        }}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl py-2 px-2.5 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold border border-purple-200 transition shadow-2xs mt-1.5"
-                      >
-                        <Cloud className="w-4 h-4 text-purple-600" />
-                        <span>Configurar Google Drive</span>
-                      </button>
-                    )}
 
                     {/* Sincronização & Persistência na Nuvem (Garante dados pós-deploy) */}
                     <button
@@ -562,26 +547,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Catálogo de Serviços</span>
                 </button>
 
-                <button
-                  id="nav-tab-branding-dev"
-                  onClick={() => setShowBrandingModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>Configurações & Logo</span>
-                </button>
-
-                {onOpenDriveSettings && (
-                  <button
-                    id="nav-tab-drive-settings-dev"
-                    onClick={onOpenDriveSettings}
-                    className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition"
-                    title="Defina qual conta do Google Drive armazenará os arquivos e fotos do sistema"
-                  >
-                    <Cloud className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Definir Google Drive</span>
-                  </button>
-                )}
               </>
             ) : (
               <>
@@ -685,18 +650,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 )}
 
-                {(isAdmin || isManager) && (
-                  <button
-                    id="nav-tab-company-settings"
-                    type="button"
-                    onClick={() => setShowBrandingModal(true)}
-                    title="Configurações da Empresa, Logomarca e Branding"
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-slate-600 hover:text-slate-900 hover:bg-white/60 transition"
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Configurações</span>
-                  </button>
-                )}
               </>
             )}
           </div>

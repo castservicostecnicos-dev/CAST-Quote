@@ -20,12 +20,17 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
-  Settings
+  Settings,
+  Folder,
+  Mail,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BRAND_COLOR_PRESETS, getContrastTextColor } from '../utils/brandTheme';
 import { CompanyLogoUploader } from './CompanyLogoUploader';
 import { firebaseService } from '../services/firebase';
+import { api } from '../services/api';
+import { googleSignIn } from '../services/googleDriveService';
 
 interface BrandingSettingsModalProps {
   isOpen: boolean;
@@ -48,8 +53,34 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Google Drive state (exclusivo para o perfil da empresa)
+  const [driveEmail, setDriveEmail] = useState('');
+  const [driveFolderName, setDriveFolderName] = useState('CAST_Quote');
+  const [driveAutoSync, setDriveAutoSync] = useState(true);
+  const [driveSyncPhotos, setDriveSyncPhotos] = useState(true);
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'loading' | 'configured' | 'not_configured'>('idle');
+  const [savingDrive, setSavingDrive] = useState(false);
+  const [driveFeedback, setDriveFeedback] = useState<string | null>(null);
+
   // Check if current user has administrative permissions for company settings
   const canEditCompany = isAdmin || isManager || isDev;
+
+  const loadDriveSettings = async () => {
+    try {
+      const settings = await api.getDriveSettings();
+      if (settings && settings.account_email) {
+        setDriveEmail(settings.account_email);
+        if (settings.root_folder_name) setDriveFolderName(settings.root_folder_name);
+        setDriveAutoSync(settings.auto_sync !== 0);
+        setDriveSyncPhotos(settings.sync_photos !== 0);
+        setDriveStatus('configured');
+      } else {
+        setDriveStatus('not_configured');
+      }
+    } catch {
+      setDriveStatus('not_configured');
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -60,6 +91,8 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
       setUploadStep('idle');
       setSuccessMessage(null);
       setErrorMessage(null);
+      setDriveFeedback(null);
+      loadDriveSettings();
     }
   }, [
     isOpen,
@@ -69,6 +102,72 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
     activeCompany?.logo_storage_path,
     brandColor
   ]);
+
+  const handleSaveDriveSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!driveEmail.trim()) {
+      setDriveFeedback('Informe o e-mail oficial que terá acesso ao Google Drive.');
+      return;
+    }
+    setSavingDrive(true);
+    setDriveFeedback(null);
+    try {
+      await api.saveDriveSettings({
+        account_email: driveEmail.trim().toLowerCase(),
+        root_folder_name: driveFolderName.trim() || 'CAST_Quote',
+        auto_sync: driveAutoSync,
+        sync_photos: driveSyncPhotos
+      });
+      setDriveStatus('configured');
+      setSuccessMessage(`E-mail do Google Drive (${driveEmail.trim()}) cadastrado previamente com sucesso no perfil da empresa!`);
+      setDriveFeedback('Salvo com sucesso!');
+      setTimeout(() => {
+        setDriveFeedback(null);
+        setSuccessMessage(null);
+      }, 4000);
+    } catch (err: any) {
+      setErrorMessage('Erro ao salvar e-mail do Drive: ' + (err.message || 'Falha'));
+    } finally {
+      setSavingDrive(false);
+    }
+  };
+
+  const handleRemoveDriveSettings = async () => {
+    if (!confirm('Deseja remover o e-mail vinculado ao Google Drive da empresa?')) return;
+    try {
+      await api.deleteDriveSettings();
+      setDriveEmail('');
+      setDriveStatus('not_configured');
+      setSuccessMessage('Vínculo do Google Drive removido do perfil da empresa.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setErrorMessage('Erro ao desvincular Drive: ' + err.message);
+    }
+  };
+
+  const handleConnectGoogle = async () => {
+    setSavingDrive(true);
+    try {
+      const cred = await googleSignIn();
+      if (cred?.user?.email) {
+        setDriveEmail(cred.user.email);
+        await api.saveDriveSettings({
+          account_email: cred.user.email,
+          account_name: cred.user.displayName || '',
+          account_photo: cred.user.photoURL || '',
+          root_folder_name: driveFolderName.trim() || 'CAST_Quote',
+          auto_sync: driveAutoSync,
+          sync_photos: driveSyncPhotos
+        });
+        setDriveStatus('configured');
+        setSuccessMessage(`Conta Google (${cred.user.email}) conectada com sucesso!`);
+      }
+    } catch (err: any) {
+      setErrorMessage('Erro ao autenticar com o Google: ' + err.message);
+    } finally {
+      setSavingDrive(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -543,6 +642,188 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
               })}
             </div>
           </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO GOOGLE DRIVE DA EMPRESA (ACESSO EXCLUSIVO DO PERFIL DA EMPRESA)    */}
+          {/* ========================================================================= */}
+          {canEditCompany && (
+            <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-purple-600" />
+                    <span>Google Drive da Empresa (Arquivamento em Nuvem)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    O cadastro do e-mail que acessará o Google Drive é prévio e exclusivo do perfil da empresa. Demais usuários não visualizam esta informação.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                    driveStatus === 'configured' && driveEmail
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
+                    {driveStatus === 'configured' && driveEmail ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>E-mail Pré-cadastrado</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                        <span>Pendente de Cadastro</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Informative Security Callout */}
+              <div className="rounded-xl bg-purple-50/70 border border-purple-200/80 p-3 flex items-start gap-2.5 text-purple-900 text-[11px]">
+                <ShieldCheck className="w-4 h-4 text-purple-600 flex-none mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong>Acesso Restrito:</strong> O único perfil com acesso a esta conta do Google Drive é o perfil da empresa. Os técnicos e outros usuários do sistema não possuem acesso a esta configuração nem aos arquivos do Drive diretamente.
+                </div>
+              </div>
+
+              {/* Form Fields */}
+              <form onSubmit={handleSaveDriveSettings} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Email Input */}
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-[11px]">
+                      E-mail da Conta Google Drive da Empresa:
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="email"
+                        value={driveEmail}
+                        onChange={(e) => setDriveEmail(e.target.value)}
+                        placeholder="ex: drive.empresa@gmail.com"
+                        className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 bg-white"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Este e-mail pré-cadastrado será o repositório central de PDFs e fotos da empresa.
+                    </span>
+                  </div>
+
+                  {/* Root Folder Name */}
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1 text-[11px]">
+                      Nome da Pasta Principal no Drive:
+                    </label>
+                    <div className="relative">
+                      <Folder className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={driveFolderName}
+                        onChange={(e) => setDriveFolderName(e.target.value)}
+                        placeholder="CAST_Quote"
+                        className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 bg-white"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Pasta raiz criada automaticamente na conta Google da empresa.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Toggles */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={driveAutoSync}
+                      onChange={(e) => setDriveAutoSync(e.target.checked)}
+                      className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block text-[11px]">Sincronização Automática</span>
+                      <span className="text-[10px] text-slate-500 block">Arquiva orçamentos aprovados e OS concluídas</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={driveSyncPhotos}
+                      onChange={(e) => setDriveSyncPhotos(e.target.checked)}
+                      className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block text-[11px]">Arquivar Fotos Verticais</span>
+                      <span className="text-[10px] text-slate-500 block">Gera pasta com fotos regulamentares do serviço</span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Drive Actions */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
+                  <div className="text-[11px] text-slate-500">
+                    {driveFeedback ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" /> {driveFeedback}
+                      </span>
+                    ) : driveEmail ? (
+                      <span className="text-purple-700 font-semibold flex items-center gap-1">
+                        <Cloud className="w-3.5 h-3.5" /> Vinculado a: <strong>{driveEmail}</strong>
+                      </span>
+                    ) : (
+                      <span>Nenhum e-mail pré-cadastrado no momento</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {driveEmail && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveDriveSettings}
+                        disabled={savingDrive}
+                        className="px-3 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                        title="Remover e-mail do Drive"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Desvincular</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleConnectGoogle}
+                      disabled={savingDrive}
+                      className="px-3 py-2 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-900 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                      title="Fazer login com a conta Google para autorizar o Drive"
+                    >
+                      <Cloud className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Conectar com Google</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={savingDrive || !driveEmail.trim()}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm transition active:scale-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {savingDrive ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Salvando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Salvar Pré-cadastro do Drive</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
 
           {/* ========================================================================= */}
           {/* SEÇÃO 3: PRÉ-VISUALIZAÇÃO EM TEMPO REAL DO PDF E SISTEMA */}

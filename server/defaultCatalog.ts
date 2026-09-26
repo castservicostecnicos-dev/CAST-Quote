@@ -1,5 +1,3 @@
-import { MAINTENANCE_CATALOG_ITEMS } from './maintenanceCatalogData';
-
 export interface SeedMaterialLink {
   material_id?: string;
   material_name: string;
@@ -22,7 +20,7 @@ export interface SeedCatalogItem {
   required_materials?: SeedMaterialLink[];
 }
 
-const BASE_DEFAULT_CATALOG: SeedCatalogItem[] = [
+export const DEFAULT_CATALOG: SeedCatalogItem[] = [
   // ==========================================
   // MATERIAIS TÉCNICOS & EQUIPAMENTOS
   // ==========================================

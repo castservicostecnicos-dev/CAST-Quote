@@ -241,9 +241,6 @@ export const ItemSelectorModal: React.FC<ItemSelectorModalProps> = ({
                   ? 'Selecionar Material'
                   : 'Carregar Item (Serviço ou Material)'}
               </h2>
-              <p className="text-xs text-slate-500">
-                Lista vertical com busca rápida e filtro automático
-              </p>
             </div>
           </div>
 
@@ -497,9 +494,6 @@ export const ItemSelectorModal: React.FC<ItemSelectorModalProps> = ({
               <div>
                 <p className="text-sm font-bold text-slate-800">
                   Nenhum item encontrado com &ldquo;{searchTerm}&rdquo;
-                </p>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Você pode usar o texto digitado como um item avulso ou limpar a busca.
                 </p>
               </div>
               {searchTerm.trim() && (

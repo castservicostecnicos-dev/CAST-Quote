@@ -164,9 +164,6 @@ export const UsersList: React.FC = () => {
             <Users className="w-6 h-6 text-blue-600" />
             Gestão de Usuários & Permissões
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Controle de perfis (DEV, ADM, GERENTE, SUPERVISOR, TÉCNICO) vinculados às empresas
-          </p>
         </div>
 
         {canManage && (

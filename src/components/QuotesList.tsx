@@ -158,9 +158,6 @@ export const QuotesList: React.FC<QuotesListProps> = ({
             <FileText className="w-6 h-6 text-blue-600" />
             Orçamentos
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Gerenciamento completo de propostas comerciais e orçamentos técnicos
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -234,7 +231,6 @@ export const QuotesList: React.FC<QuotesListProps> = ({
           <div className="p-12 text-center text-slate-400 space-y-2">
             <FileText className="w-10 h-10 mx-auto text-slate-300" />
             <p className="text-sm font-semibold text-slate-700">Nenhum orçamento encontrado</p>
-            <p className="text-xs text-slate-500">Crie um novo orçamento para começar</p>
           </div>
         ) : (
           <>

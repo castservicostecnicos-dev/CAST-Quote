@@ -128,9 +128,6 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
             <UserCheck className="w-6 h-6 text-emerald-600" />
             Corpo Técnico
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Técnicos habilitados para execução de orçamentos e ordens de serviço
-          </p>
         </div>
 
         {canManage && (
@@ -334,7 +331,7 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
                   className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <label htmlFor="tech-active-check" className="font-semibold text-slate-700">
-                  Técnico Ativo (habilitado para atribuição em ordens de serviço)
+                  Técnico Ativo
                 </label>
               </div>
 

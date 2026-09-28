@@ -323,7 +323,6 @@ export const VerticalCameraModal: React.FC<VerticalCameraModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">Anexar Foto ao Orçamento</h3>
-              <p className="text-xs text-slate-400">Padrão vertical (2:3) para relatórios e PDF</p>
             </div>
           </div>
           <button
@@ -553,11 +552,8 @@ export const VerticalCameraModal: React.FC<VerticalCameraModalProps> = ({
               <div className="w-14 h-14 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center mb-3">
                 <Upload className="w-7 h-7" />
               </div>
-              <p className="text-sm font-semibold text-white mb-1">
+              <p className="text-sm font-semibold text-white mb-4">
                 Selecione ou arraste uma foto aqui
-              </p>
-              <p className="text-xs text-slate-400 max-w-xs mb-4">
-                Aceita fotos do celular, galeria ou computador. Se a imagem for horizontal, ajustamos automaticamente para o formato retrato.
               </p>
               <button
                 type="button"

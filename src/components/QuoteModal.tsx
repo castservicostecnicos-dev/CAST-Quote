@@ -763,40 +763,37 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 <h2 className="text-base font-bold">
                   {quoteToEdit ? `Editar Orçamento #${quoteToEdit.quote_number}` : 'Novo Orçamento'}
                 </h2>
-                <p className="text-xs text-slate-400">
-                  {activeCompany?.name} • Edição completa com fotos verticais e cálculo dinâmico
-                </p>
+                {activeCompany?.name && (
+                  <p className="text-xs text-slate-400">{activeCompany.name}</p>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               {/* Autosave Status Indicator */}
-              <div className="hidden sm:flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-                {autosaveStatus === 'saving' ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    <span className="text-amber-300 font-medium">Salvando rascunho...</span>
-                  </>
-                ) : lastSavedAt ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-slate-300">
-                      Rascunho salvo às {lastSavedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-slate-400">Salvamento automático ativo</span>
-                  </>
-                )}
-              </div>
+              {(autosaveStatus === 'saving' || lastSavedAt) && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                  {autosaveStatus === 'saving' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="text-amber-300 font-medium">Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-slate-300">
+                        Salvo às {lastSavedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"
                 onClick={onClose}
                 className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                title="Fechar (seu rascunho fica salvo)"
+                title="Fechar"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -924,11 +921,8 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 <div>
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-blue-600" />
-                    Itens e Serviços (Cálculo Automático)
+                    Itens e Serviços
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Regra: novos itens abrem <strong className="text-blue-700">logo abaixo do item que você estiver preenchendo</strong>
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
@@ -1430,9 +1424,6 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                     <Camera className="w-3.5 h-3.5 text-blue-600" />
                     Fotos do Orçamento ({photos.length})
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Regra mandatória: Apenas fotos VERTICAIS são aceitas e diagramadas no PDF
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1463,7 +1454,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
               {photos.length === 0 ? (
                 <div className="p-6 text-center border border-dashed border-slate-300 rounded-xl bg-white text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-                  <p>Nenhuma foto anexada. Fotos adicionadas aparecerão no PDF diagramadas em formato vertical.</p>
+                  <p>Nenhuma foto anexada.</p>
                   <div className="flex items-center gap-2 mt-1">
                     <button
                       type="button"
@@ -1537,11 +1528,8 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                 <div>
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                     <PenTool className="w-4 h-4 text-blue-600" />
-                    Assinatura Digital de Aprovação do Orçamento
+                    Assinatura Digital de Aprovação
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    O cliente assina diretamente com o dedo ou caneta touch no pop-up calibrado com suavização Bézier.
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1574,11 +1562,11 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                     <p className="text-xs font-medium text-slate-800">
                       Cliente: {clients.find((c) => c.id === clientId)?.name || 'Cliente'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
-                      {clientSignedAt
-                        ? `Registrado em: ${new Date(clientSignedAt).toLocaleString('pt-BR')}`
-                        : 'Pronta para gravação'}
-                    </p>
+                    {clientSignedAt && (
+                      <p className="text-[11px] text-slate-500">
+                        {`Registrado em: ${new Date(clientSignedAt).toLocaleString('pt-BR')}`}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex sm:flex-col gap-2 shrink-0">
@@ -1609,9 +1597,6 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                     </div>
                     <div>
                       <p className="font-semibold text-slate-800">Nenhuma assinatura coletada ainda</p>
-                      <p className="text-[11px] text-slate-500">
-                        Clique no botão para abrir a janela pop-up e assinar na tela com toque suave.
-                      </p>
                     </div>
                   </div>
 

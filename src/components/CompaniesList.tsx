@@ -951,9 +951,6 @@ export const CompaniesList: React.FC = () => {
                 <Building2 className="w-6 h-6 text-purple-700" />
                 Gerenciar Empresas Cadastradas
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500">
-                O Desenvolvedor opera de forma independente de qualquer empresa, com controle global unificado.
-              </p>
             </div>
 
             <button
@@ -1350,9 +1347,6 @@ export const CompaniesList: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="text-xs font-extrabold text-purple-950">Cadastrar Usuário Gerente Inicial</h4>
-                        <p className="text-[11px] text-purple-700">
-                          O Gerente cadastrado aqui terá acesso ao sistema para cadastrar os demais usuários desta empresa.
-                        </p>
                       </div>
                     </div>
                     <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-purple-900 bg-white px-2.5 py-1 rounded-lg border border-purple-200 shadow-2xs">
@@ -1443,14 +1437,6 @@ export const CompaniesList: React.FC = () => {
                 <label htmlFor="comp-active-chk" className="font-semibold text-slate-700">
                   Empresa Ativa no Sistema
                 </label>
-              </div>
-
-              {/* Badge de Persistência Cloud Firestore */}
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-950 text-[11px]">
-                <ShieldCheck className="w-4 h-4 text-purple-600 flex-none" />
-                <span className="leading-tight">
-                  <strong>Banco de Dados em Nuvem (Firebase Cloud Firestore):</strong> Dados multiempresa gravados com persistência definitiva na nuvem, protegidos contra deploys.
-                </span>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">

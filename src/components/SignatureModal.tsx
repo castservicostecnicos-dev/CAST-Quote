@@ -118,25 +118,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
             initialDataUrl={initialSignature}
             clientName={clientName}
           />
-
-          {/* Legal / Validity Disclaimer */}
-          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-            <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>Validade e Autenticidade Digital</span>
-            </div>
-            <p className="text-slate-500 leading-normal text-[10px] sm:text-[11px]">
-              {isClient ? (
-                <>
-                  Ao assinar, o cliente <strong>{clientName}</strong> atesta a conferência e aprovação dos serviços descritos no documento <strong>{documentType} #{documentNumber}</strong>, incorporando a assinatura diretamente ao comprovante em PDF.
-                </>
-              ) : (
-                <>
-                  O responsável técnico atesta a exatidão técnica e conclusão dos serviços discriminados no documento <strong>{documentType} #{documentNumber}</strong>.
-                </>
-              )}
-            </p>
-          </div>
         </div>
 
         {/* Footer Actions */}

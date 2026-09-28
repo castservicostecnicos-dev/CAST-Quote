@@ -187,9 +187,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
             <Users className="w-6 h-6 text-blue-600" />
             Clientes Cadastrados
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Base de clientes vinculada à empresa {activeCompany?.name || 'CAST Quote'}
-          </p>
         </div>
 
         <button
@@ -223,11 +220,7 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
         </div>
       ) : filteredClients.length === 0 ? (
         <div className="p-12 text-center text-slate-400 space-y-2 bg-white rounded-2xl border border-slate-200 shadow-xs">
-          <Users className="w-10 h-10 mx-auto text-slate-300" />
-          <p className="text-sm font-semibold text-slate-700">Nenhum cliente encontrado</p>
-          <p className="text-xs text-slate-400">
-            {searchTerm ? 'Tente ajustar os termos da pesquisa.' : 'Cadastre seu primeiro cliente para agilizar a criação de orçamentos e OS.'}
-          </p>
+          <p className="text-sm font-semibold text-slate-700">Nenhum cliente cadastrado</p>
           <div className="pt-2">
             <button
               onClick={openNewModal}
@@ -328,9 +321,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   <h2 className="text-base font-bold text-slate-900 leading-tight">
                     {clientToEdit ? 'Editar Cliente' : 'Novo Cliente'}
                   </h2>
-                  <p className="text-[11px] text-slate-500">
-                    Armazenamento permanente no Firebase Firestore
-                  </p>
                 </div>
               </div>
               <button
@@ -553,14 +543,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                 />
               </div>
 
-              {/* Badge de Persistência Cloud Firestore */}
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px]">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 flex-none" />
-                <span className="leading-tight">
-                  <strong>Banco de Dados em Nuvem (Firebase Cloud Firestore):</strong> Registro gravado de forma persistente, preservado permanentemente mesmo após novos deploys.
-                </span>
-              </div>
-
               {/* Ações */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
@@ -578,7 +560,7 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   {saving ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Salvando no Firestore...</span>
+                      <span>Salvando...</span>
                     </>
                   ) : clientToEdit ? (
                     'Atualizar Cliente'

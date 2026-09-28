@@ -319,7 +319,6 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold">Repositório Google Drive</h3>
-              <p className="text-xs text-slate-400">Árvore organizada por cliente e categoria</p>
             </div>
           </div>
           <button
@@ -494,10 +493,6 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-600 leading-normal">
-              Informe o e-mail Google que o cliente forneceu para liberar o acesso dele à pasta de ordens de serviço, orçamentos e fotos.
-            </p>
-
             <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="email"
@@ -581,10 +576,6 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                 </div>
               </div>
             </div>
-
-            <p className="text-[11px] text-slate-600 leading-normal">
-              Cada cliente possui sua própria pasta isolada, com separadores para documentos em PDF e arquivos individuais das fotos vinculadas, preservando resolução original para consultas e edições futuras.
-            </p>
           </div>
 
           {/* Loading Progress Bar */}

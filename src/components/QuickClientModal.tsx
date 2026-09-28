@@ -79,7 +79,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold">Cadastro Rápido de Cliente</h3>
-              <p className="text-[11px] text-slate-400">Salvo no Firebase Firestore e vinculado ao documento</p>
             </div>
           </div>
           <button
@@ -223,14 +222,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
               placeholder="Rua, Número, Complemento, Bairro"
               className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
             />
-          </div>
-
-          {/* Badge de Persistência Cloud Firestore */}
-          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px]">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 flex-none" />
-            <span className="leading-tight">
-              <strong>Persistência em Nuvem:</strong> Salvo no Firebase Firestore para não apagar após novos deploys.
-            </span>
           </div>
 
           {/* Footer buttons */}

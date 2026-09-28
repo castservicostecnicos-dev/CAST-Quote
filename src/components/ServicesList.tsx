@@ -297,9 +297,6 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
             <Boxes className="w-6 h-6 text-indigo-600" />
             Catálogo de Serviços & Materiais
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Itens padronizados com preços e unidades para orçamentos e ordens de serviço
-          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -410,11 +407,6 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
             <Boxes className="w-6 h-6" />
           </div>
           <h3 className="text-sm font-bold text-slate-800">Nenhum item encontrado</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {searchTerm || filterType !== 'all'
-              ? 'Nenhum resultado corresponde aos filtros aplicados.'
-              : 'Cadastre serviços e materiais para agilizar o preenchimento de orçamentos e ordens de serviço.'}
-          </p>
           <div className="flex flex-wrap justify-center gap-2 pt-2">
             <button
               onClick={() => setIsImportModalOpen(true)}
@@ -772,13 +764,7 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
                       <label className="block font-bold text-slate-900 text-xs flex items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5 text-blue-600" />
                         <span>Materiais & Insumos Necessários</span>
-                        <span className="text-[10px] font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-100">
-                          Reconhecimento Automático
-                        </span>
                       </label>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Ao clicar neste serviço num orçamento ou OS, estes materiais serão sugeridos e vinculados automaticamente.
-                      </p>
                     </div>
                     <button
                       type="button"
@@ -792,7 +778,7 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
 
                   {requiredMaterialsList.length === 0 ? (
                     <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-[11px] text-slate-400">
-                      Nenhum material vinculado a este serviço. Clique em "Adicionar Insumo" para vincular materiais automaticamente.
+                      Nenhum material adicionado.
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -889,16 +875,8 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
                   className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                 />
                 <label htmlFor="srv-active" className="font-semibold text-slate-700 cursor-pointer text-xs">
-                  Item Ativo (disponível para seleção em orçamentos e OS)
+                  Item Ativo
                 </label>
-              </div>
-
-              {/* Badge de Persistência Cloud Firestore */}
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px]">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 flex-none" />
-                <span className="leading-tight">
-                  <strong>Banco de Dados em Nuvem (Firebase Cloud Firestore):</strong> Salvo fora do código e protegido contra perdas em novos deploys.
-                </span>
               </div>
 
               {/* Actions */}
@@ -922,7 +900,7 @@ export const ServicesList: React.FC<ServicesListProps> = ({ onSelectTab }) => {
                   {saving ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Salvando no Firestore...</span>
+                      <span>Salvando...</span>
                     </>
                   ) : itemToEdit ? (
                     'Atualizar Item'

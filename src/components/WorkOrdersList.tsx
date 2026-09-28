@@ -121,9 +121,6 @@ export const WorkOrdersList: React.FC<WorkOrdersListProps> = ({
             <Wrench className="w-6 h-6 text-emerald-600" />
             Ordens de Serviço (OS)
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Execução em campo, alocação técnica, fotos verticais e fechamento de serviços
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -203,7 +200,6 @@ export const WorkOrdersList: React.FC<WorkOrdersListProps> = ({
           <div className="p-12 text-center text-slate-400 space-y-2">
             <Wrench className="w-10 h-10 mx-auto text-slate-300" />
             <p className="text-sm font-semibold text-slate-700">Nenhuma ordem de serviço encontrada</p>
-            <p className="text-xs text-slate-500">Crie uma nova OS ou converta um orçamento aprovado</p>
           </div>
         ) : (
           <>

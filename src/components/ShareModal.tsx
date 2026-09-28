@@ -221,7 +221,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold truncate">Enviar {type} #{docNumber}</h3>
-              <p className="text-xs text-slate-400">Mensagens WhatsApp & E-mail</p>
             </div>
           </div>
           <button

@@ -765,40 +765,37 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                 <h2 className="text-base font-bold">
                   {orderToEdit ? `Editar OS #${orderToEdit.order_number}` : 'Nova Ordem de Serviço'}
                 </h2>
-                <p className="text-xs text-slate-400">
-                  {activeCompany?.name} • Gestão de campo com fotos estritamente verticais
-                </p>
+                {activeCompany?.name && (
+                  <p className="text-xs text-slate-400">{activeCompany.name}</p>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               {/* Autosave Status Indicator */}
-              <div className="hidden sm:flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-                {autosaveStatus === 'saving' ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-emerald-300 font-medium">Salvando rascunho...</span>
-                  </>
-                ) : lastSavedAt ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-slate-300">
-                      Rascunho salvo às {lastSavedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-slate-400">Salvamento automático ativo</span>
-                  </>
-                )}
-              </div>
+              {(autosaveStatus === 'saving' || lastSavedAt) && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                  {autosaveStatus === 'saving' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-emerald-300 font-medium">Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-slate-300">
+                        Salvo às {lastSavedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"
                 onClick={onClose}
                 className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                title="Fechar (seu rascunho fica salvo)"
+                title="Fechar"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -928,11 +925,8 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                 <div>
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                    Itens e Mão de Obra da OS (Cálculo Automático)
+                    Itens e Mão de Obra da OS
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Regra: novos itens abrem <strong className="text-emerald-700">logo abaixo do item que você estiver preenchendo</strong>
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
@@ -1434,9 +1428,6 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                     <Camera className="w-3.5 h-3.5 text-emerald-600" />
                     Registro Fotográfico da OS ({photos.length} Fotos)
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Regra mandatória: Apenas fotos VERTICAIS. No PDF serão renderizadas com tamanho fixo (até 5 por linha).
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1467,7 +1458,7 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
 
               {photos.length === 0 ? (
                 <div className="p-6 text-center border border-dashed border-slate-300 rounded-xl bg-white text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-                  <p>Nenhuma foto anexada. Use a câmera ou carregue fotos da galeria para registrar o serviço.</p>
+                  <p>Nenhuma foto anexada.</p>
                   <div className="flex items-center gap-2 mt-1">
                     <button
                       type="button"
@@ -1541,11 +1532,8 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                 <div>
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                     <PenTool className="w-4 h-4 text-blue-600" />
-                    Assinatura Digital do Cliente & Aceite no Local
+                    Assinatura Digital do Cliente & Aceite
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Coleta instantânea na tela do celular/tablet com tecnologia de suavização de curvas Bézier (120Hz).
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1582,11 +1570,11 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                     <p className="text-xs font-medium text-slate-800">
                       Cliente: {clients.find((c) => c.id === clientId)?.name || 'Cliente'}
                     </p>
-                    <p className="text-[11px] text-slate-500">
-                      {clientSignedAt
-                        ? `Registrado em: ${new Date(clientSignedAt).toLocaleString('pt-BR')}`
-                        : 'Pronta para gravação'}
-                    </p>
+                    {clientSignedAt && (
+                      <p className="text-[11px] text-slate-500">
+                        {`Registrado em: ${new Date(clientSignedAt).toLocaleString('pt-BR')}`}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex sm:flex-col gap-2 shrink-0">
@@ -1620,9 +1608,6 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
                     </div>
                     <div>
                       <p className="font-semibold text-slate-800">Nenhuma assinatura coletada ainda</p>
-                      <p className="text-[11px] text-slate-500">
-                        O cliente assina diretamente com o dedo na tela do celular ou tablet.
-                      </p>
                     </div>
                   </div>
 

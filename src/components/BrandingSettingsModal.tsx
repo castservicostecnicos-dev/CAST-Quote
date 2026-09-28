@@ -341,9 +341,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                   Administração
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Logomarca e identidade visual da empresa
-              </p>
             </div>
           </div>
 
@@ -389,8 +386,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
                   {activeCompany?.cnpj && <span>CNPJ: {activeCompany.cnpj}</span>}
-                  <span>•</span>
-                  <span>ID Firestore: <code className="font-mono text-[10px] bg-slate-200/80 px-1 rounded">{activeCompany?.id || 'master'}</code></span>
                 </div>
               </div>
             </div>
@@ -400,78 +395,22 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
               <span className="px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200 text-[10px]">
                 {user?.role || 'ADM'}
               </span>
-              {canEditCompany ? (
-                <span className="text-emerald-700 font-semibold flex items-center gap-1 text-[10px]">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Administrador Autorizado
-                </span>
-              ) : (
-                <span className="text-amber-700 font-semibold flex items-center gap-1 text-[10px]">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Modo Visualização
-                </span>
-              )}
             </div>
           </div>
 
-          {!canEditCompany && (
-            <div className="rounded-2xl bg-amber-50 border border-amber-200 p-3.5 text-amber-800 flex items-start gap-2 text-xs">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-none mt-0.5" />
-              <div>
-                <p className="font-bold">Acesso Administrativo Restrito</p>
-                <p className="text-[11px] mt-0.5">
-                  Apenas usuários com perfil <strong>Administrador (ADM)</strong> ou <strong>Gerente (GERENTE)</strong> têm autorização para salvar e atualizar a logomarca e cores corporativas da empresa no Firestore.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* ========================================================================= */}
-          {/* FORMULÁRIO DE UPLOAD DE LOGOMARCA NO FIREBASE STORAGE & FIRESTORE */}
+          {/* FORMULÁRIO DE UPLOAD DE LOGOMARCA */}
           {/* ========================================================================= */}
           <form
             id="company-logo-upload-form"
             onSubmit={handleUploadLogoFormSubmit}
             className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-2xs"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-blue-600" />
-                  <span>Upload da Logomarca Oficial da Empresa</span>
-                </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Faça o upload do logotipo oficial da empresa para salvar no Google Cloud Firebase Storage e vincular ao documento corporativo no Cloud Firestore
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                  <Database className="w-3 h-3 text-blue-600" />
-                  Firestore Sync
-                </span>
-              </div>
-            </div>
-
-            {/* Storage Info Details Box */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px]">
-              <div className="flex items-center gap-2">
-                <Cloud className="w-4 h-4 text-blue-500 flex-none" />
-                <div className="min-w-0">
-                  <span className="block font-bold text-slate-700">Firebase Storage Bucket:</span>
-                  <span className="block font-mono text-[10px] text-slate-500 truncate">
-                    mega-alpha-djkjx.firebasestorage.app
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-purple-500 flex-none" />
-                <div className="min-w-0">
-                  <span className="block font-bold text-slate-700">Documento no Firestore:</span>
-                  <span className="block font-mono text-[10px] text-slate-500 truncate">
-                    companies/{activeCompany?.id || 'empresa_ativa'}
-                  </span>
-                </div>
-              </div>
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <Cloud className="w-4 h-4 text-blue-600" />
+                <span>Logomarca Oficial da Empresa</span>
+              </h3>
             </div>
 
             {/* Upload Component */}
@@ -501,7 +440,7 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                 ) : logoUrl ? (
                   <span className="text-emerald-700 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Logomarca vinculada à empresa no Firestore
+                    Logomarca salva
                   </span>
                 ) : (
                   <span>Nenhuma imagem selecionada ainda</span>
@@ -515,7 +454,7 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                     onClick={handleRemoveLogo}
                     disabled={uploadStep !== 'idle'}
                     className="px-3 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
-                    title="Desvincular e remover logomarca do documento da empresa"
+                    title="Remover logomarca"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Remover Logo</span>
@@ -528,15 +467,10 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                   disabled={!canEditCompany || uploadStep !== 'idle' || (!selectedFile && !logoUrl)}
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition active:scale-95 disabled:opacity-50"
                 >
-                  {uploadStep === 'uploading_storage' ? (
+                  {uploadStep === 'uploading_storage' || uploadStep === 'saving_firestore' ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>1/2 Enviando para Firebase Storage...</span>
-                    </>
-                  ) : uploadStep === 'saving_firestore' ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>2/2 Vinculando no Cloud Firestore...</span>
+                      <span>Salvando...</span>
                     </>
                   ) : uploadStep === 'success' ? (
                     <>
@@ -546,7 +480,7 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                   ) : (
                     <>
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Salvar Logomarca no Firebase Storage & Firestore</span>
+                      <span>Salvar Logomarca</span>
                     </>
                   )}
                 </button>
@@ -564,9 +498,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                   <Palette className="w-4 h-4 text-slate-700" />
                   <span>Cor Primária e Identidade da Marca</span>
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Personalize a cor oficial dos botões, destaques, orçamentos e relatórios PDF gerados pela empresa
-                </p>
               </div>
 
               {/* Custom Color Input */}
@@ -652,11 +583,8 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
                     <Cloud className="w-4 h-4 text-purple-600" />
-                    <span>Google Drive da Empresa (Arquivamento em Nuvem)</span>
+                    <span>Google Drive da Empresa</span>
                   </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    O cadastro do e-mail que acessará o Google Drive é prévio e exclusivo do perfil da empresa. Demais usuários não visualizam esta informação.
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-1.5 self-start sm:self-auto">
@@ -668,23 +596,15 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                     {driveStatus === 'configured' && driveEmail ? (
                       <>
                         <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>E-mail Pré-cadastrado</span>
+                        <span>Configurado</span>
                       </>
                     ) : (
                       <>
                         <AlertCircle className="w-3 h-3 text-amber-600" />
-                        <span>Pendente de Cadastro</span>
+                        <span>Não configurado</span>
                       </>
                     )}
                   </span>
-                </div>
-              </div>
-
-              {/* Informative Security Callout */}
-              <div className="rounded-xl bg-purple-50/70 border border-purple-200/80 p-3 flex items-start gap-2.5 text-purple-900 text-[11px]">
-                <ShieldCheck className="w-4 h-4 text-purple-600 flex-none mt-0.5" />
-                <div className="leading-relaxed">
-                  <strong>Acesso Restrito:</strong> O único perfil com acesso a esta conta do Google Drive é o perfil da empresa. Os técnicos e outros usuários do sistema não possuem acesso a esta configuração nem aos arquivos do Drive diretamente.
                 </div>
               </div>
 
@@ -706,9 +626,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                         className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 bg-white"
                       />
                     </div>
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Este e-mail pré-cadastrado será o repositório central de PDFs e fotos da empresa.
-                    </span>
                   </div>
 
                   {/* Root Folder Name */}
@@ -726,9 +643,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                         className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 bg-white"
                       />
                     </div>
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Pasta raiz criada automaticamente na conta Google da empresa.
-                    </span>
                   </div>
                 </div>
 
@@ -743,7 +657,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                     />
                     <div>
                       <span className="font-bold text-slate-800 block text-[11px]">Sincronização Automática</span>
-                      <span className="text-[10px] text-slate-500 block">Arquiva orçamentos aprovados e OS concluídas</span>
                     </div>
                   </label>
 
@@ -756,7 +669,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                     />
                     <div>
                       <span className="font-bold text-slate-800 block text-[11px]">Arquivar Fotos Verticais</span>
-                      <span className="text-[10px] text-slate-500 block">Gera pasta com fotos regulamentares do serviço</span>
                     </div>
                   </label>
                 </div>
@@ -815,7 +727,7 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                       ) : (
                         <>
                           <Check className="w-3.5 h-3.5" />
-                          <span>Salvar Pré-cadastro do Drive</span>
+                          <span>Salvar Configurações</span>
                         </>
                       )}
                     </button>
@@ -992,13 +904,6 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                 </div>
               </div>
             </div>
-
-            <div className="rounded-xl bg-blue-50/70 border border-blue-200/80 p-3 flex items-start gap-2 text-blue-900">
-              <Info className="w-4 h-4 text-blue-600 flex-none mt-0.5" />
-              <p className="text-[11px] leading-relaxed">
-                A <strong>logomarca</strong> e as <strong>cores primárias</strong> são armazenadas permanentemente no <strong>Firebase Storage</strong> e no <strong>Cloud Firestore</strong>, sendo aplicadas de imediato em toda a interface do sistema e nos arquivos PDF gerados.
-              </p>
-            </div>
           </div>
         </div>
 
@@ -1032,12 +937,12 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
               {savingGeneral ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Salvando no Firestore...</span>
+                  <span>Salvando...</span>
                 </>
               ) : (
                 <>
                   <Check className="w-3.5 h-3.5" style={{ color: textColor }} />
-                  <span style={{ color: textColor }}>Salvar Alterações Globais</span>
+                  <span style={{ color: textColor }}>Salvar Alterações</span>
                 </>
               )}
             </button>

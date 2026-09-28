@@ -105,9 +105,6 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
               <h2 className="text-base font-bold">Nº {docNumber}</h2>
               <span className="text-xs text-slate-400">({data.client_name})</span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Fotos com tamanho fixo regulamentar (até 5 por linha, estritamente verticais)
-            </p>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">

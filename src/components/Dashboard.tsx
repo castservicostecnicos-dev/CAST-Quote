@@ -246,11 +246,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">
                 Olá, {user?.name?.split(' ')[0]}! 👋
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-                {isDev && !activeCompany
-                  ? 'Você está no modo mestre independente com acesso global e irrestrito a todas as empresas, clientes, orçamentos e ordens de serviço.'
-                  : 'Bem-vindo ao CAST Quote. Aqui você tem visão integrada dos seus orçamentos, ordens de serviço, relatórios e fotos verticais regulamentares.'}
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-2.5">
@@ -308,37 +303,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
           </div>
-
-          {/* DEV Quick Demo Shortcut Banner */}
-          {isDev && (
-            <div className="rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50/60 to-purple-50 border border-purple-200 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center flex-none shadow-xs">
-                  <Presentation className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
-                    Central de Demonstração para Apresentação a Clientes
-                    <span className="bg-purple-200 text-purple-800 text-[10px] px-2 py-0.2 rounded-full font-extrabold">
-                      Comercial
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-purple-700 mt-0.5">
-                    Demonstre o sistema com 1 clique alternando entre as visões de ADM, Gerente, Supervisor e Técnico de Campo com fotos verticais.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveDevSubView('demo')}
-                className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs flex-none active:scale-95"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Abrir Demonstração</span>
-              </button>
-            </div>
-          )}
 
 
       {/* Metrics Grid */}
@@ -402,7 +366,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span className="text-[11px] text-slate-500 ml-1">Técnicos</span>
             </div>
           </div>
-          <div className="mt-1 text-xs text-slate-500">Base cadastrada ativa</div>
         </div>
 
         {/* DEV Multiempresa or Approved Quotes */}
@@ -421,9 +384,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 ? (stats?.total_companies ?? stats?.companiesCount ?? 1)
                 : (stats?.quotes_by_status?.['Aprovado'] ?? stats?.statusDistribution?.quotes?.['Aprovado'] ?? 0)}
             </span>
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            {isDev ? 'Multiempresa habilitado' : 'Prontos para execução em OS'}
           </div>
         </div>
       </div>

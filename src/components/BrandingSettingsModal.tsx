@@ -824,7 +824,11 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
                           className="max-w-full max-h-full object-contain"
                         />
                       ) : (
-                        <FileText className="w-4 h-4" style={{ color: textColor }} />
+                        <img
+                          src="/icon-192.png"
+                          alt="CAST Quote"
+                          className="w-full h-full object-contain p-0.5 rounded-lg"
+                        />
                       )}
                     </div>
                     <div>

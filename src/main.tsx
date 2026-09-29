@@ -5,13 +5,11 @@ import './index.css';
 import { firebaseService } from './services/firebase';
 
 // Inicialização e verificação de conectividade com o Cloud Firestore
-firebaseService.testConnection().then(() => {
-  firebaseService.initDefaults().catch((err) => {
-    console.warn('Erro ao inicializar dados padrão no Firestore:', err);
-  });
-}).catch((err) => {
-  console.warn('Verificação de conexão Firestore:', err);
-});
+firebaseService.testConnection().then((connected) => {
+  if (connected) {
+    firebaseService.initDefaults().catch(() => {});
+  }
+}).catch(() => {});
 
 // Padronização global de regras de caixa:
 // 1. Senhas: aceita tanto maiúsculas quanto minúsculas exatamente como digitadas (caixa mista).

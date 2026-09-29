@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
-  getFirestore,
+  initializeFirestore,
+  setLogLevel,
   Firestore,
   collection,
   doc,
@@ -45,11 +46,18 @@ import {
   DashboardStats
 } from '../types';
 
+// Silencia logs internos ruidosos do SDK do Firestore quando em modo offline ou em sandboxes restritas
+try {
+  setLogLevel('silent');
+} catch {}
+
 // ============================================================================
 // 1. INICIALIZAÇÃO CENTRALIZADA DO FIREBASE (App, Firestore, Auth, Storage)
 // ============================================================================
 export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db: Firestore = getFirestore(app);
+export const db: Firestore = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+});
 export const auth: Auth = getAuth(app);
 export const storage: FirebaseStorage = getStorage(app);
 
@@ -67,10 +75,10 @@ export function withTimeout<T>(promise: Promise<T>, ms: number = 10000, fallback
 // Test connection to Firestore on initialization
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    const probe = getDocFromServer(doc(db, '__health__', 'check'));
-    await withTimeout(probe, 4000, null);
-    return true;
-  } catch (err: any) {
+    const probe = getDocFromServer(doc(db, 'test', 'connection'));
+    const res = await withTimeout(probe, 2000, null);
+    return res !== null;
+  } catch {
     return false;
   }
 }

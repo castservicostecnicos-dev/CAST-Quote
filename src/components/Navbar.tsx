@@ -115,7 +115,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     className="max-w-full max-h-full object-contain p-1"
                   />
                 ) : (
-                  <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <img
+                    src="/icon-192.png"
+                    alt="CAST Quote Logo"
+                    className="w-full h-full object-contain p-0.5 rounded-lg"
+                    referrerPolicy="no-referrer"
+                  />
                 )}
               </div>
               <div className="min-w-0">

@@ -42,8 +42,13 @@ export const LoginModal: React.FC = () => {
         {/* Brand Banner */}
         <div className="bg-slate-950 px-5 sm:px-8 pt-6 sm:pt-8 pb-5 sm:pb-7 text-white text-center relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-blue-600/10 rounded-full blur-2xl" />
-          <div className="mx-auto w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg mb-3 sm:mb-4">
-            <FileText className="w-6 h-6 sm:w-7 sm:h-7" />
+          <div className="mx-auto w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center p-1 shadow-2xl mb-3 sm:mb-4 overflow-hidden">
+            <img
+              src="/app-logo.png"
+              alt="CAST Quote Logo"
+              className="w-full h-full object-contain rounded-xl drop-shadow"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
             CAST <span className="text-blue-500">QUOTE</span>

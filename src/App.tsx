@@ -24,17 +24,17 @@ import { Quote, WorkOrder } from './types';
 import { api } from './services/api';
 
 function MainApp() {
-  const { user, activeCompany, companies, isSupervisor, authLoading, isBackendWakingUp, brandColor } = useAuth();
+  const { user, activeCompany, companies, isSupervisor, authLoading, setAuthLoading, brandColor } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
-  // Recupera e sincroniza automaticamente os dados da nuvem para o SQLite local após deploys
+  // Recupera e sincroniza automaticamente os dados da nuvem para o SQLite local após o servidor estar ativo
   React.useEffect(() => {
-    if (user) {
+    if (user && !authLoading) {
       api.syncCloudToLocal().catch((err) => {
         console.warn('Auto cloud sync error:', err);
       });
     }
-  }, [user?.id]);
+  }, [user?.id, authLoading]);
 
   // Enforce role-based tab restrictions strictly according to prompt
   const isDev = user?.role === 'DEV';
@@ -95,14 +95,13 @@ function MainApp() {
   // DEV Google Drive Designated Account Modal State
   const [driveSettingsModalOpen, setDriveSettingsModalOpen] = useState(false);
 
-  // Exibe a SplashScreen enquanto o estado de autenticação e os dados iniciais estão carregando,
-  // ou enquanto o servidor backend em nuvem (Render/Cloud) está acordando de cold-start
+  // Exibe a SplashScreen com monitoramento ativo do cold-start no Render,
+  // barra de porcentagem dinâmica (0% a 100%) e carrossel de recursos para entretenimento
   if (authLoading) {
     return (
       <SplashScreen
         brandColor={brandColor || '#2563eb'}
-        isBackendWakingUp={isBackendWakingUp}
-        statusText={isBackendWakingUp ? 'Conectando ao servidor em nuvem...' : 'Carregando ecossistema CAST QUOTE...'}
+        onFinish={() => setAuthLoading(false)}
       />
     );
   }

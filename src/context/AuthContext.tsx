@@ -9,7 +9,9 @@ interface AuthContextType {
   companies: Company[];
   token: string | null;
   authLoading: boolean;
+  setAuthLoading: (loading: boolean) => void;
   isBackendWakingUp: boolean;
+  setIsBackendWakingUp: (waking: boolean) => void;
   brandColor: string;
   updateBrandColor: (color: string) => Promise<void>;
   updateCompanyBranding: (color: string, logoUrl?: string, storagePath?: string) => Promise<void>;
@@ -147,44 +149,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Boot & Backend cold-start health-check
+  // Inicialização e verificação de saúde da aplicação
   useEffect(() => {
-    let isMounted = true;
-    let wakeTimer: any = null;
-
-    const checkInitialHealth = async () => {
-      // If backend takes longer than 1.5s to respond, flag that backend is waking up (cold start / sleep)
-      wakeTimer = setTimeout(() => {
-        if (isMounted) {
-          setIsBackendWakingUp(true);
-        }
-      }, 1500);
-
-      try {
-        await fetch('/api/health', { method: 'GET' }).catch(() => null);
-      } catch (err) {
-        console.warn('Boot check error:', err);
-      } finally {
-        if (wakeTimer) clearTimeout(wakeTimer);
-        // Small delay so splash animation resolves smoothly without jarring flicker
-        setTimeout(() => {
-          if (isMounted) {
-            setIsBackendWakingUp(false);
-            setAuthLoading(false);
-          }
-        }, 600);
-      }
-    };
-
-    checkInitialHealth();
-
-    return () => {
-      isMounted = false;
-      if (wakeTimer) clearTimeout(wakeTimer);
-    };
-  }, []);
-
-  useEffect(() => {
+    // Sincroniza estado das empresas salvas se houver usuário
     if (user) {
       refreshCompanies();
     }
@@ -294,7 +261,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         companies,
         token,
         authLoading,
+        setAuthLoading,
         isBackendWakingUp,
+        setIsBackendWakingUp,
         brandColor,
         updateBrandColor,
         updateCompanyBranding,

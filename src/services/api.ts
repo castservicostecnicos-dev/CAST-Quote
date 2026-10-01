@@ -13,7 +13,7 @@ import { firebaseService, cleanFirestoreDatabaseComplete } from './firebase';
 
 const BASE_URL = '/api';
 
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 3000): Promise<Response> => {
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 10000): Promise<Response> => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -629,7 +629,7 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(client)
-      }, 3000);
+      }, 10000);
       if (res.ok) {
         created = await res.json();
       }

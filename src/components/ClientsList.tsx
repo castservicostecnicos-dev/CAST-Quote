@@ -140,7 +140,18 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
         showFeedback('Cliente cadastrado com sucesso!');
       }
 
+      // Reset modal and all fields completely for sequential additions
       setModalOpen(false);
+      setClientToEdit(null);
+      setName('');
+      setDocument('');
+      setEmail('');
+      setPhone('');
+      setAddress('');
+      setCity('');
+      setState('SP');
+      setNotes('');
+      setFormError(null);
       loadClients();
     } catch (err: any) {
       console.error('Erro ao salvar cliente:', err);

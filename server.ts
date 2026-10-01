@@ -646,7 +646,7 @@ async function startServer() {
         effectiveCompanyId = defaultComp?.id || 'comp-master-cast';
       }
 
-      const id = customId || `cli-${Date.now()}`;
+      const id = customId || `cli-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const now = new Date().toISOString();
       runSql(
         `INSERT OR REPLACE INTO clients (id, company_id, name, document, email, phone, address, city, state, notes, created_at)

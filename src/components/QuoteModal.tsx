@@ -29,6 +29,7 @@ import { ItemAutocompleteInput } from './ItemAutocompleteInput';
 import { AutoMaterialsPromptModal } from './AutoMaterialsPromptModal';
 import { COMMON_ITEM_SUGGESTIONS } from '../constants/itemSuggestions';
 import { useAutosaveDraft } from '../hooks/useAutosaveDraft';
+import { UnitSelector } from './UnitSelector';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -78,8 +79,8 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
   ]);
 
   // Financials
-  const [discount, setDiscount] = useState<number>(0);
-  const [addition, setAddition] = useState<number>(0);
+  const [discount, setDiscount] = useState<number | string>(0);
+  const [addition, setAddition] = useState<number | string>(0);
 
   // Photos
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
@@ -563,8 +564,8 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     const updated = [...items];
     const item = { ...updated[index], [field]: value };
 
-    const qty = Number(item.quantity) || 0;
-    const price = Number(item.unit_price) || 0;
+    const qty = value === '' && field === 'quantity' ? 0 : (Number(item.quantity) || 0);
+    const price = value === '' && field === 'unit_price' ? 0 : (Number(item.unit_price) || 0);
     item.total_price = Number((qty * price).toFixed(2));
 
     updated[index] = item;
@@ -710,9 +711,11 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
         (items && items[0]?.description && items[0].description.trim()) ||
         'Orçamento de serviços técnicos especializados';
 
+      const selectedClient = clients.find((c) => c.id === clientId);
       const payload = {
         company_id: targetCompanyId,
         client_id: clientId,
+        client_name: selectedClient?.name || '',
         technician_id: technicianId || null,
         created_by: user?.id || 'Sistema',
         date,
@@ -852,15 +855,40 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                   required
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 font-medium focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 >
-                  <option value="">Selecione um cliente</option>
+                  <option value="">Selecione um cliente (Nome Completo)</option>
                   {clients.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} {c.document ? `• Doc: ${c.document}` : ''} {c.phone ? `• Tel: ${c.phone}` : ''}
                     </option>
                   ))}
                 </select>
+
+                {/* Selected Client Summary Card */}
+                {(() => {
+                  const selClient = clients.find((c) => c.id === clientId);
+                  if (!selClient) return null;
+                  return (
+                    <div className="mt-2 p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs space-y-1 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-xs sm:text-sm">{selClient.name}</span>
+                        {selClient.document && (
+                          <span className="font-mono text-[10px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-blue-200">
+                            {selClient.document}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
+                        {selClient.phone && <span>📞 {selClient.phone}</span>}
+                        {selClient.email && <span className="lowercase">✉️ {selClient.email}</span>}
+                        {(selClient.address || selClient.city) && (
+                          <span>📍 {[selClient.address, selClient.city, selClient.state].filter(Boolean).join(', ')}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1022,23 +1050,26 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                           <td className="py-2 px-2 align-middle">
                             <input
                               type="number"
-                              min="0.01"
+                              min="0"
                               step="any"
                               required
-                              value={item.quantity}
-                              onFocus={() => setActiveItemIndex(index)}
+                              value={item.quantity === 0 && item.quantity !== '0' ? '' : item.quantity}
+                              onFocus={(e) => {
+                                setActiveItemIndex(index);
+                                e.target.select();
+                              }}
                               onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                              placeholder="1"
                               className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                             />
                           </td>
 
                           <td className="py-2 px-2 align-middle">
-                            <input
-                              type="text"
-                              value={item.unit || 'UN'}
-                              onFocus={() => setActiveItemIndex(index)}
-                              onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
-                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-800 text-center uppercase focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                            <UnitSelector
+                              id={`desktop-unit-${index}`}
+                              value={item.unit}
+                              onChange={(val) => handleItemChange(index, 'unit', val)}
+                              className="w-full h-10 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold text-slate-800 text-center uppercase focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                             />
                           </td>
 
@@ -1048,9 +1079,12 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                               min="0"
                               step="any"
                               required
-                              value={item.unit_price === 0 ? '' : item.unit_price}
-                              onFocus={() => setActiveItemIndex(index)}
-                              onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                              value={item.unit_price === 0 && item.unit_price !== '0' ? '' : item.unit_price}
+                              onFocus={(e) => {
+                                setActiveItemIndex(index);
+                                e.target.select();
+                              }}
+                              onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
                               placeholder="0,00"
                               className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                             />
@@ -1266,27 +1300,30 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                           </label>
                           <input
                             type="number"
-                            min="0.01"
+                            min="0"
                             step="any"
                             required
-                            value={item.quantity}
-                            onFocus={() => setActiveItemIndex(index)}
+                            value={item.quantity === 0 && item.quantity !== '0' ? '' : item.quantity}
+                            onFocus={(e) => {
+                              setActiveItemIndex(index);
+                              e.target.select();
+                            }}
                             onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                            placeholder="1"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-center focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </div>
 
-                        <div className="w-24 min-w-[75px]">
+                        <div className="w-28 min-w-[90px]">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
                             Unidade
                           </label>
-                          <input
-                            type="text"
-                            value={item.unit || 'UN'}
-                            onFocus={() => setActiveItemIndex(index)}
-                            onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                          <UnitSelector
+                            id={`mobile-unit-${index}`}
+                            value={item.unit}
+                            onChange={(val) => handleItemChange(index, 'unit', val)}
                             placeholder="UN"
-                            className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-2.5 py-2 text-sm text-slate-800 font-semibold text-center uppercase focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-2 py-2 text-sm text-slate-800 font-semibold text-center uppercase focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
                         </div>
 
@@ -1299,9 +1336,12 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             min="0"
                             step="any"
                             required
-                            value={item.unit_price === 0 ? '' : item.unit_price}
-                            onFocus={() => setActiveItemIndex(index)}
-                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value === '' ? 0 : e.target.value)}
+                            value={item.unit_price === 0 && item.unit_price !== '0' ? '' : item.unit_price}
+                            onFocus={(e) => {
+                              setActiveItemIndex(index);
+                              e.target.select();
+                            }}
+                            onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
                             placeholder="0,00"
                             className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 font-semibold text-right focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                           />
@@ -1390,8 +1430,9 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                       type="number"
                       min="0"
                       step="any"
-                      value={discount}
-                      onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                      value={discount === 0 ? '' : discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                      placeholder="0,00"
                       className="w-24 rounded-lg border border-slate-200 p-1 text-xs text-right font-medium"
                     />
                   </div>
@@ -1402,8 +1443,9 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                       type="number"
                       min="0"
                       step="any"
-                      value={addition}
-                      onChange={(e) => setAddition(Number(e.target.value) || 0)}
+                      value={addition === 0 ? '' : addition}
+                      onChange={(e) => setAddition(e.target.value)}
+                      placeholder="0,00"
                       className="w-24 rounded-lg border border-slate-200 p-1 text-xs text-right font-medium"
                     />
                   </div>
@@ -1712,11 +1754,16 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
       {/* Quick Client Modal for instant inline client registration */}
       <QuickClientModal
         isOpen={isQuickClientOpen}
-        companyId={activeCompany?.id || quoteToEdit?.company_id || 'comp-cast'}
+        companyId={activeCompany?.id || quoteToEdit?.company_id || 'comp-master-cast'}
         onClose={() => setIsQuickClientOpen(false)}
-        onClientCreated={(newClient) => {
+        onClientCreated={(newClient, shouldLink = true) => {
           setClients((prev) => [newClient, ...prev.filter((c) => c.id !== newClient.id)]);
-          setClientId(newClient.id);
+          if (shouldLink) {
+            setClientId(newClient.id);
+            if (newClient.address && !address) {
+              setAddress(newClient.address);
+            }
+          }
         }}
       />
     </>

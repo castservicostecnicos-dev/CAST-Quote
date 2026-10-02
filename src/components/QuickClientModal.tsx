@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, UserPlus, Check, Loader2, Eye, ShieldCheck, Mail, Cloud } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, UserPlus, Check, Loader2, Plus, Sparkles, Building, Phone, Mail, MapPin } from 'lucide-react';
 import { Client } from '../types';
 import { api } from '../services/api';
 
@@ -7,7 +7,7 @@ interface QuickClientModalProps {
   isOpen: boolean;
   companyId: string;
   onClose: () => void;
-  onClientCreated: (client: Client) => void;
+  onClientCreated: (client: Client, shouldLink?: boolean) => void;
 }
 
 export const QuickClientModal: React.FC<QuickClientModalProps> = ({
@@ -25,13 +25,32 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
   const [state, setState] = useState('SP');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName('');
+      setPhone('');
+      setEmail('');
+      setDocument('');
+      setAddress('');
+      setCity('');
+      setState('SP');
+      setError(null);
+      setSuccessToast(null);
+      setLoading(false);
+      setTimeout(() => nameInputRef.current?.focus(), 150);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveClientData = async (keepOpenForAnother: boolean) => {
     if (!name.trim()) {
-      setError('Nome do cliente é obrigatório.');
+      setError('Por favor, informe o Nome Completo ou Razão Social do cliente.');
+      nameInputRef.current?.focus();
       return;
     }
 
@@ -47,25 +66,50 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
         document: document.trim(),
         address: address.trim(),
         city: city.trim(),
-        state: state.trim() || 'SP',
-        notes: 'Cadastrado rapidamente pelo formulário de orçamento/OS'
+        state: state.trim().toUpperCase() || 'SP',
+        notes: 'Cadastrado rapidamente pelo formulário'
       });
 
-      onClientCreated(newClient);
-      onClose();
-      // Reset
-      setName('');
-      setPhone('');
-      setEmail('');
-      setDocument('');
-      setAddress('');
-      setCity('');
+      const clientFullName = newClient.name;
+
+      if (keepOpenForAnother) {
+        // Salva e notifica componente pai
+        onClientCreated(newClient, false);
+
+        // Feedback positivo de sucesso
+        setSuccessToast(`Cliente "${clientFullName}" cadastrado com sucesso! Pronto para cadastrar o próximo.`);
+        setTimeout(() => setSuccessToast(null), 4000);
+
+        // Limpa campos para o próximo cadastro em sequência
+        setName('');
+        setPhone('');
+        setEmail('');
+        setDocument('');
+        setAddress('');
+        setCity('');
+        setState('SP');
+        setTimeout(() => nameInputRef.current?.focus(), 100);
+      } else {
+        // Salva e vincula direto ao documento aberto
+        onClientCreated(newClient, true);
+        onClose();
+      }
     } catch (err: any) {
       console.error('Erro ao cadastrar cliente rápido:', err);
-      setError(err.message || 'Erro ao cadastrar cliente.');
+      setError(err.message || 'Erro ao cadastrar cliente. Verifique os dados digitados.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveClientData(false);
+  };
+
+  const handleSaveAndAnother = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    await saveClientData(true);
   };
 
   return (
@@ -79,48 +123,25 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold">Cadastro Rápido de Cliente</h3>
+              <p className="text-[11px] text-slate-400">Preencha o nome completo para vincular ao orçamento/OS</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Visualização em Tempo Real (Mobile Live Feedback) */}
-        <div className="m-4 mb-0 p-3 rounded-xl bg-slate-900 text-white shadow-xs border border-slate-800 shrink-0">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300 pb-1.5 border-b border-slate-800">
-            <span className="flex items-center gap-1.5 text-blue-400 font-bold">
-              <Eye className="w-3.5 h-3.5" />
-              Visualização em Tempo Real:
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 text-[10px] font-mono">
-              {name ? 'Digitando' : 'Aguardando'}
-            </span>
+        {/* Feedback de sucesso em sequência */}
+        {successToast && (
+          <div className="mx-4 mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successToast}</span>
           </div>
-          <div className="pt-2 space-y-1 text-xs">
-            <div className="flex items-baseline gap-2">
-              <span className="text-slate-400 text-[11px] w-16 shrink-0">Nome:</span>
-              <span className="font-bold text-white truncate text-sm">
-                {name || <span className="text-slate-500 italic font-normal">Digite o nome abaixo...</span>}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-[11px] w-16 shrink-0">Telefone:</span>
-              <span className="font-mono text-emerald-400">
-                {phone || <span className="text-slate-500 italic font-sans font-normal">--</span>}
-              </span>
-              <span className="text-slate-500 text-[10px]">|</span>
-              <span className="text-slate-400 text-[11px]">E-mail:</span>
-              <span className="font-mono text-blue-300 truncate">
-                {email || <span className="text-slate-500 italic font-sans font-normal">--</span>}
-              </span>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3.5 text-xs flex-1">
@@ -130,20 +151,23 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
             </div>
           )}
 
+          {/* Nome Completo */}
           <div>
             <label className="block font-bold text-slate-800 mb-1 text-xs">
-              Nome Completo / Razão Social <span className="text-red-500">*</span>
+              Nome Completo do Cliente ou Razão Social <span className="text-red-500">*</span>
             </label>
             <input
+              ref={nameInputRef}
               type="text"
               required
-              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
-              placeholder="Ex: João da Silva ou Empresa Exemplo Ltda"
-              className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
+              placeholder="Ex: João da Silva Santos ou Tech Solutions Ltda"
+              className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
             />
+            <p className="text-[11px] text-slate-500 mt-1">
+              O nome completo informado será exibido no cabeçalho do documento e no PDF.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -153,7 +177,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                 placeholder="(11) 98765-4321"
                 className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
               />
@@ -164,7 +187,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
                 type="text"
                 value={document}
                 onChange={(e) => setDocument(e.target.value)}
-                onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                 placeholder="000.000.000-00"
                 className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
               />
@@ -173,19 +195,15 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-800 mb-1 text-xs flex items-center justify-between">
-                <span>E-mail (Google Drive)</span>
-                <span className="text-[10px] text-blue-600 font-normal">Acesso Drive</span>
+              <label className="block font-bold text-slate-800 mb-1 text-xs">
+                E-mail
               </label>
               <input
-                id="quick-client-email"
-                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                 placeholder="cliente@email.com"
-                className="email-field lowercase-field w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
+                className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs lowercase"
               />
             </div>
             <div>
@@ -195,7 +213,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                   placeholder="São Paulo"
                   className="flex-1 rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
@@ -204,7 +221,6 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
                   maxLength={2}
                   value={state}
                   onChange={(e) => setState(e.target.value.toUpperCase())}
-                  onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
                   placeholder="SP"
                   className="w-16 rounded-xl border border-slate-300 p-3 sm:p-2.5 text-center uppercase text-base sm:text-sm font-bold text-slate-900 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
@@ -218,38 +234,51 @@ export const QuickClientModal: React.FC<QuickClientModalProps> = ({
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)}
               placeholder="Rua, Número, Complemento, Bairro"
               className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
             />
           </div>
 
-          {/* Footer buttons */}
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          {/* Footer buttons com suporte a múltiplos clientes em sequência */}
+          <div className="pt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium transition text-xs sm:text-sm"
+              className="px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium transition text-xs sm:text-sm cursor-pointer"
             >
-              Cancelar
+              Fechar
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-xs transition text-xs sm:text-sm"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Cadastrando...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Cadastrar e Vincular</span>
-                </>
-              )}
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveAndAnother}
+                disabled={loading || !name.trim()}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+                title="Salva este cliente e mantém o formulário aberto para cadastrar outro na sequência"
+              >
+                <Plus className="w-4 h-4 text-blue-600" />
+                <span>Salvar e Cadastrar Outro</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={loading || !name.trim()}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-xs transition text-xs sm:text-sm cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Cadastrar e Vincular</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

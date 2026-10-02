@@ -45,28 +45,27 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [modalSuccessMsg, setModalSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     loadClients();
   }, [activeCompany?.id, user?.role]);
 
-  const [activeFieldInfo, setActiveFieldInfo] = useState<{ label: string; value: string } | null>(null);
-
-  const loadClients = async () => {
-    setLoading(true);
+  const loadClients = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await api.getClients(activeCompany?.id, user?.role);
       setClients(data);
     } catch (err) {
       console.error('Erro ao carregar clientes:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   const showFeedback = (msg: string) => {
     setFeedbackMsg(msg);
-    setTimeout(() => setFeedbackMsg(null), 3000);
+    setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
   const openNewModal = () => {
@@ -81,6 +80,7 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
     setState('SP');
     setNotes('');
     setFormError(null);
+    setModalSuccessMsg(null);
     setModalOpen(true);
   };
 
@@ -96,13 +96,13 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
     setState(client.state || 'SP');
     setNotes(client.notes || '');
     setFormError(null);
+    setModalSuccessMsg(null);
     setModalOpen(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveClient = async (keepOpenForAnother = false) => {
     if (!name.trim()) {
-      setFormError('Por favor, informe o Nome ou Razão Social do cliente.');
+      setFormError('Por favor, informe o Nome Completo ou Razão Social do cliente.');
       return;
     }
 
@@ -133,32 +133,58 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
         setClients((prev) =>
           prev.map((c) => (c.id === clientToEdit.id ? { ...c, ...payload, ...updated } : c))
         );
-        showFeedback('Cliente atualizado com sucesso!');
+        showFeedback(`Cliente "${payload.name}" atualizado com sucesso!`);
+        setModalOpen(false);
+        setClientToEdit(null);
       } else {
         const created = await api.createClient(payload);
         setClients((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
-        showFeedback('Cliente cadastrado com sucesso!');
+
+        if (keepOpenForAnother) {
+          setModalSuccessMsg(`Cliente "${created.name}" salvo com sucesso! Pronto para cadastrar o próximo.`);
+          setTimeout(() => setModalSuccessMsg(null), 4000);
+          setName('');
+          setDocument('');
+          setEmail('');
+          setPhone('');
+          setAddress('');
+          setCity('');
+          setState('SP');
+          setNotes('');
+          setFormError(null);
+        } else {
+          showFeedback(`Cliente "${created.name}" cadastrado com sucesso!`);
+          setModalOpen(false);
+          setClientToEdit(null);
+          setName('');
+          setDocument('');
+          setEmail('');
+          setPhone('');
+          setAddress('');
+          setCity('');
+          setState('SP');
+          setNotes('');
+          setFormError(null);
+        }
       }
 
-      // Reset modal and all fields completely for sequential additions
-      setModalOpen(false);
-      setClientToEdit(null);
-      setName('');
-      setDocument('');
-      setEmail('');
-      setPhone('');
-      setAddress('');
-      setCity('');
-      setState('SP');
-      setNotes('');
-      setFormError(null);
-      loadClients();
+      loadClients(true);
     } catch (err: any) {
       console.error('Erro ao salvar cliente:', err);
       setFormError(err.message || 'Erro inesperado ao salvar cliente.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveClient(false);
+  };
+
+  const handleSaveAndAnother = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    await saveClient(true);
   };
 
   const handleDelete = async (client: Client) => {
@@ -251,11 +277,11 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs flex-none">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs flex-none border border-blue-100">
                       {client.name.substring(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900 line-clamp-1">{client.name}</h3>
+                      <h3 className="text-sm font-bold text-slate-900 leading-snug">{client.name}</h3>
                       {client.document && (
                         <p className="text-[11px] text-slate-400 font-medium">Doc: {client.document}</p>
                       )}
@@ -343,43 +369,12 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
               </button>
             </div>
 
-            {/* Visualização em Tempo Real (Mobile Live Feedback) */}
-            <div className="mb-3.5 p-3 rounded-xl bg-slate-900 text-white shadow-xs border border-slate-800">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300 pb-1.5 border-b border-slate-800">
-                <span className="flex items-center gap-1.5 text-blue-400 font-bold">
-                  <Eye className="w-3.5 h-3.5" />
-                  Visualização em Tempo Real (Digitando):
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 text-[10px] font-mono">
-                  {name ? 'Preenchendo' : 'Aguardando'}
-                </span>
+            {modalSuccessMsg && (
+              <div className="mb-3.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{modalSuccessMsg}</span>
               </div>
-              <div className="pt-2 space-y-1 text-xs">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-slate-400 text-[11px] w-16 shrink-0">Nome:</span>
-                  <span className="font-bold text-white truncate text-sm">
-                    {name || <span className="text-slate-500 italic font-normal">Digite o nome abaixo...</span>}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400 text-[11px] w-16 shrink-0">Telefone:</span>
-                  <span className="font-mono text-emerald-400">
-                    {phone || <span className="text-slate-500 italic font-sans font-normal">--</span>}
-                  </span>
-                  <span className="text-slate-500 text-[10px]">|</span>
-                  <span className="text-slate-400 text-[11px]">Doc:</span>
-                  <span className="font-mono text-slate-300">
-                    {document || <span className="text-slate-500 italic font-sans font-normal">--</span>}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400 text-[11px] w-16 shrink-0">E-mail:</span>
-                  <span className="font-mono text-blue-300 truncate">
-                    {email || <span className="text-slate-500 italic font-sans font-normal">cliente@email.com</span>}
-                  </span>
-                </div>
-              </div>
-            </div>
+            )}
 
             {formError && (
               <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
@@ -418,12 +413,8 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  onFocus={(e) => {
-                    setActiveFieldInfo({ label: 'Nome', value: e.target.value });
-                    setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                  }}
-                  placeholder="Nome do cliente ou empresa..."
-                  className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
+                  placeholder="Nome completo do cliente ou razão social da empresa..."
+                  className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
               </div>
 
@@ -435,10 +426,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                     type="text"
                     value={document}
                     onChange={(e) => setDocument(e.target.value)}
-                    onFocus={(e) => {
-                      setActiveFieldInfo({ label: 'Documento', value: e.target.value });
-                      setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                    }}
                     placeholder="000.000.000-00"
                     className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                   />
@@ -449,10 +436,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                     type="text"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    onFocus={(e) => {
-                      setActiveFieldInfo({ label: 'Telefone', value: e.target.value });
-                      setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                    }}
                     placeholder="(11) 99999-9999"
                     className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                   />
@@ -477,10 +460,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                  onFocus={(e) => {
-                    setActiveFieldInfo({ label: 'E-mail', value: e.target.value });
-                    setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                  }}
                   placeholder="exemplo@gmail.com"
                   className="email-field lowercase-field w-full rounded-xl border border-blue-300 bg-white p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
@@ -496,10 +475,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  onFocus={(e) => {
-                    setActiveFieldInfo({ label: 'Endereço', value: e.target.value });
-                    setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                  }}
                   placeholder="Ex: Av. Paulista, 1000 - Bela Vista"
                   className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
@@ -513,10 +488,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    onFocus={(e) => {
-                      setActiveFieldInfo({ label: 'Cidade', value: e.target.value });
-                      setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                    }}
                     placeholder="São Paulo"
                     className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                   />
@@ -528,10 +499,6 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                     maxLength={2}
                     value={state}
                     onChange={(e) => setState(e.target.value.toUpperCase())}
-                    onFocus={(e) => {
-                      setActiveFieldInfo({ label: 'UF', value: e.target.value });
-                      setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                    }}
                     placeholder="SP"
                     className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 uppercase font-bold text-center placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                   />
@@ -545,17 +512,13 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  onFocus={(e) => {
-                    setActiveFieldInfo({ label: 'Observações', value: e.target.value });
-                    setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-                  }}
                   placeholder="Informações adicionais, referências ou detalhes de atendimento..."
                   className="w-full rounded-xl border border-slate-300 p-3 sm:p-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition shadow-2xs"
                 />
               </div>
 
-              {/* Ações */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              {/* Ações com suporte a cadastro em sequência */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
@@ -563,22 +526,38 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition cursor-pointer shadow-md flex items-center gap-2 text-xs sm:text-sm"
-                >
-                  {saving ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Salvando...</span>
-                    </>
-                  ) : clientToEdit ? (
-                    'Atualizar Cliente'
-                  ) : (
-                    'Salvar Cliente'
+
+                <div className="flex items-center gap-2">
+                  {!clientToEdit && (
+                    <button
+                      type="button"
+                      onClick={handleSaveAndAnother}
+                      disabled={saving || !name.trim()}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+                      title="Salva este cliente e mantém o formulário aberto para cadastrar o próximo cliente"
+                    >
+                      <Plus className="w-4 h-4 text-blue-600" />
+                      <span>Salvar e Cadastrar Outro</span>
+                    </button>
                   )}
-                </button>
+
+                  <button
+                    type="submit"
+                    disabled={saving || !name.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition cursor-pointer shadow-md flex items-center gap-2 text-xs sm:text-sm disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : clientToEdit ? (
+                      'Atualizar Cliente'
+                    ) : (
+                      'Salvar Cliente'
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

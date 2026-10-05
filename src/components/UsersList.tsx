@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Search, Edit2, Trash2, Shield, Mail, Building, Key, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Search, Edit2, Trash2, Shield, Mail, Building, Key, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { User, UserRole, Company } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 export const UsersList: React.FC = () => {
   const { user: currentUser, activeCompany, companies, isDev, isAdmin, isManager } = useAuth();
@@ -21,6 +22,10 @@ export const UsersList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -35,6 +40,16 @@ export const UsersList: React.FC = () => {
   useEffect(() => {
     loadUsers();
   }, [activeCompany?.id, currentUser?.role]);
+
+  const showFeedback = (msg: string, isError = false) => {
+    if (isError) {
+      setFeedbackError(msg);
+      setTimeout(() => setFeedbackError(null), 4000);
+    } else {
+      setFeedbackMsg(msg);
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    }
+  };
 
   const loadUsers = async () => {
     if (users.length === 0) {
@@ -100,35 +115,51 @@ export const UsersList: React.FC = () => {
             console.warn('Erro ao sincronizar senha com reset endpoint:', resetErr);
           }
         }
+        showFeedback(`Usuário "${cleanName}" atualizado com sucesso!`);
       } else {
         if (!cleanPassword) {
-          alert('Por favor, defina uma senha para o novo usuário.');
+          showFeedback('Por favor, defina uma senha para o novo usuário.', true);
           setSaving(false);
           return;
         }
         await api.createUser(payload);
+        showFeedback(`Usuário "${cleanName}" cadastrado com sucesso!`);
       }
       setPassword('');
       setModalOpen(false);
       loadUsers();
     } catch (err: any) {
-      alert('Erro ao salvar usuário: ' + err.message);
+      showFeedback('Erro ao salvar usuário: ' + (err.message || 'Falha na operação.'), true);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (u: User) => {
+  const handleDelete = (u: User) => {
     if (u.id === currentUser?.id) {
-      alert('Você não pode excluir o seu próprio usuário logado.');
+      showFeedback('Você não pode excluir o seu próprio usuário logado.', true);
       return;
     }
-    if (!confirm(`Deseja excluir o usuário "${u.name}" (${u.email})?`)) return;
+    setUserToDelete(u);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    const targetId = userToDelete.id;
+    const targetName = userToDelete.name;
+    setDeletingUser(true);
     try {
-      await api.deleteUser(u.id);
-      loadUsers();
+      await api.deleteUser(targetId);
+      setUsers((prev) => prev.filter((u) => u.id !== targetId));
+      showFeedback(`Usuário "${targetName}" excluído com sucesso!`);
+      setUserToDelete(null);
+      setModalOpen(false);
+      setUserToEdit(null);
+      await loadUsers();
     } catch (err: any) {
-      alert('Erro ao excluir: ' + err.message);
+      showFeedback('Erro ao excluir usuário: ' + (err.message || 'Falha de comunicação.'), true);
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -157,6 +188,20 @@ export const UsersList: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* Toast Feedback */}
+      {feedbackMsg && (
+        <div className="fixed top-20 right-5 z-50 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
+      {feedbackError && (
+        <div className="fixed top-20 right-5 z-50 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
+          <Shield className="w-4 h-4" />
+          <span>{feedbackError}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -223,17 +268,25 @@ export const UsersList: React.FC = () => {
 
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => openEditModal(u)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
-                    title="Editar"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(u);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                    title="Editar usuário"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   {canManage && u.id !== currentUser?.id && (
                     <button
-                      onClick={() => handleDelete(u)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                      title="Excluir"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(u);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                      title="Excluir usuário"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -379,26 +432,55 @@ export const UsersList: React.FC = () => {
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-slate-200">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer text-xs sm:text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  {userToEdit && canManage && userToEdit.id !== currentUser?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = userToEdit;
+                        handleDelete(target);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 font-bold transition text-xs sm:text-sm cursor-pointer"
+                      title="Excluir este usuário do sistema"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Excluir Usuário</span>
+                    </button>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition cursor-pointer text-xs sm:text-sm shadow-xs"
                 >
-                  {saving ? 'Salvando...' : 'Salvar Usuário'}
+                  {saving ? 'Salvando...' : userToEdit ? 'Atualizar Usuário' : 'Salvar Usuário'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação para Excluir Usuário */}
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        title="Excluir Usuário"
+        message="Tem certeza que deseja excluir permanentemente este usuário do sistema? Ele perderá imediatamente o acesso a todas as empresas e ferramentas."
+        itemName={userToDelete ? `${userToDelete.name} (${userToDelete.email})` : ''}
+        confirmLabel="Sim, Excluir Usuário"
+        isLoading={deletingUser}
+        isDanger={true}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={confirmDeleteUser}
+      />
     </div>
   );
 };

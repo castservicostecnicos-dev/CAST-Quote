@@ -28,6 +28,7 @@ import {
 } from '../services/googleDriveService';
 import { api } from '../services/api';
 import { User } from 'firebase/auth';
+import { ConfirmModal } from './ConfirmModal';
 
 interface DevDriveSettingsModalProps {
   isOpen: boolean;
@@ -68,6 +69,7 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
     folderUrl: string;
     accountEmail: string;
   } | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -178,11 +180,11 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
     }
   };
 
-  const handleDisconnectAccount = async () => {
-    if (!confirm('Deseja realmente desconectar a conta do Google Drive? O sistema deixará de ter uma conta central vinculada até uma nova conexão.')) {
-      return;
-    }
+  const handleDisconnectAccount = () => {
+    setConfirmDisconnect(true);
+  };
 
+  const executeDisconnectAccount = async () => {
     setLoading(true);
     try {
       await logout();
@@ -192,6 +194,7 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
       setSavedSettings(null);
       setTestResult(null);
       setSuccessMessage('Conta do Google Drive desconectada com sucesso.');
+      setConfirmDisconnect(false);
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao desconectar conta do Google Drive.');
     } finally {
@@ -632,6 +635,19 @@ export const DevDriveSettingsModal: React.FC<DevDriveSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Confirmação para Desconectar Google Drive */}
+      <ConfirmModal
+        isOpen={confirmDisconnect}
+        title="Desconectar Google Drive"
+        message="Deseja realmente desconectar a conta do Google Drive? O sistema deixará de ter uma conta central vinculada até uma nova conexão."
+        itemName={user?.email ? `Conta: ${user.email}` : undefined}
+        confirmLabel="Sim, Desconectar Conta"
+        isLoading={loading}
+        isDanger={true}
+        onClose={() => setConfirmDisconnect(false)}
+        onConfirm={executeDisconnectAccount}
+      />
     </div>
   );
 };

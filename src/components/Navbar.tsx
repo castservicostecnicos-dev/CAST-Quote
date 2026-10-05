@@ -86,7 +86,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const canSeeClientsAndTechs = user?.role === 'GERENTE' || user?.role === 'ADM' || user?.role === 'SUPERVISOR';
-  const canSeeServices = user?.role === 'GERENTE' || user?.role === 'ADM' || user?.role === 'SUPERVISOR';
   const canSeeUsers = user?.role === 'GERENTE' || user?.role === 'ADM';
   const canSeeCompanies = user?.role === 'DEV';
 
@@ -538,20 +537,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <Presentation className="w-3.5 h-3.5" />
                   <span>Demonstração</span>
                 </button>
-
-                <button
-                  id="nav-tab-services-dev"
-                  onClick={() => onSelectTab('services')}
-                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
-                    currentTab === 'services'
-                      ? 'bg-purple-700 text-white shadow-xs font-bold'
-                      : 'text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200'
-                  }`}
-                >
-                  <Boxes className="w-3.5 h-3.5" />
-                  <span>Catálogo de Serviços</span>
-                </button>
-
               </>
             ) : (
               <>
@@ -621,22 +606,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <UserCheck className="w-3.5 h-3.5" />
                     <span>Técnicos</span>
-                  </button>
-                )}
-
-                {canSeeServices && (
-                  <button
-                    id="nav-tab-services"
-                    onClick={() => onSelectTab('services')}
-                    style={currentTab === 'services' ? { color: brandColor } : undefined}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
-                      currentTab === 'services'
-                        ? 'bg-white shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                    }`}
-                  >
-                    <Boxes className="w-3.5 h-3.5" />
-                    <span>Serviços & Materiais</span>
                   </button>
                 )}
 

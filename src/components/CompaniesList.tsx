@@ -28,6 +28,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Company, User, UserRole } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 import { CompanyLogoUploader } from './CompanyLogoUploader';
 import { BRAND_COLOR_PRESETS } from '../utils/brandTheme';
 
@@ -86,6 +87,10 @@ export const CompaniesList: React.FC = () => {
   const [deleteUserPopupOpen, setDeleteUserPopupOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
+
+  // Company Deactivation & Bulk Toggle Confirmation States
+  const [companyToDeactivate, setCompanyToDeactivate] = useState<Company | null>(null);
+  const [bulkToggleAction, setBulkToggleAction] = useState<boolean | null>(null);
 
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -254,19 +259,22 @@ export const CompaniesList: React.FC = () => {
     const newActive = !isCurrentlyActive;
 
     if (!newActive) {
-      const userCount = allUsers.filter(u => u.company_id === c.id && u.role !== 'DEV').length;
-      const confirmMsg = `Atenção: Ao desativar a empresa "${c.name}", todos os ${userCount} usuários cadastrados por ela serão automaticamente desativados e perderão o acesso ao sistema imediatamente.\n\nDeseja realmente desativar esta empresa?`;
-      if (!window.confirm(confirmMsg)) {
-        return;
-      }
+      // Opening confirmation modal
+      setCompanyToDeactivate(c);
+      return;
     }
 
+    await executeToggleCompanyActive(c, true);
+  };
+
+  const executeToggleCompanyActive = async (c: Company, newActive: boolean) => {
     try {
       await api.toggleCompanyStatus(c.id, newActive);
       showToast(newActive
         ? `Empresa "${c.name}" ativada com sucesso!`
         : `Empresa "${c.name}" e todos os seus usuários foram desativados automaticamente.`
       );
+      setCompanyToDeactivate(null);
       await refreshCompanies();
       await loadData();
       if (selectedCompany?.id === c.id) {
@@ -274,14 +282,14 @@ export const CompaniesList: React.FC = () => {
         await loadCompanyUsers(c.id);
       }
     } catch (err: any) {
-      alert('Erro ao alterar status da empresa: ' + err.message);
+      showToast('Erro ao alterar status da empresa: ' + (err.message || 'Falha de comunicação.'));
     }
   };
 
   // Activate / Deactivate User Toggle with Instant Visual Feedback
   const handleToggleUserActive = async (u: User) => {
     if (u.id === currentUser?.id) {
-      alert('Você não pode alterar o status da sua própria conta de DEV em uso.');
+      showToast('Você não pode alterar o status da sua própria conta de DEV em uso.');
       return;
     }
     const isCurrentlyActive = (u.active === 1 || (u.active as any) === true);
@@ -304,17 +312,19 @@ export const CompaniesList: React.FC = () => {
       setCompanyUsers(prev =>
         prev.map(item => (item.id === u.id ? { ...item, active: isCurrentlyActive ? 1 : 0 } : item))
       );
-      alert('Erro ao atualizar status do usuário: ' + err.message);
+      showToast('Erro ao atualizar status do usuário: ' + (err.message || 'Falha de comunicação.'));
     }
   };
 
   // Bulk Activate / Deactivate Users of Company
-  const handleBulkToggleUsers = async (targetActive: boolean) => {
+  const handleBulkToggleUsers = (targetActive: boolean) => {
     if (!selectedCompany || companyUsers.length === 0) return;
-    const actionLabel = targetActive ? 'ativar' : 'desativar';
-    const confirmMsg = `Deseja realmente ${actionLabel} todos os ${companyUsers.length} usuários vinculados à empresa "${selectedCompany.name}"?`;
-    if (!window.confirm(confirmMsg)) return;
+    setBulkToggleAction(targetActive);
+  };
 
+  const executeBulkToggleUsers = async () => {
+    if (!selectedCompany || companyUsers.length === 0 || bulkToggleAction === null) return;
+    const targetActive = bulkToggleAction;
     try {
       setLoadingUsers(true);
       for (const u of companyUsers) {
@@ -323,10 +333,11 @@ export const CompaniesList: React.FC = () => {
         }
       }
       showToast(`Todos os usuários da empresa foram ${targetActive ? 'ATIVADOS' : 'DESATIVADOS'}.`);
+      setBulkToggleAction(null);
       await loadCompanyUsers(selectedCompany.id);
       await loadData();
     } catch (err: any) {
-      alert('Erro ao alterar status em lote: ' + err.message);
+      showToast('Erro ao alterar status em lote: ' + (err.message || 'Falha de comunicação.'));
     } finally {
       setLoadingUsers(false);
     }
@@ -1573,7 +1584,7 @@ export const CompaniesList: React.FC = () => {
 
       {/* MODAL 3: STRICT DELETE USER CONFIRMATION POPUP */}
       {deleteUserPopupOpen && userToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-red-200">
             <div className="flex items-start gap-3.5 mb-4">
               <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center flex-none">
@@ -1726,6 +1737,30 @@ export const CompaniesList: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Modal de Confirmação para Desativar Empresa */}
+      <ConfirmModal
+        isOpen={!!companyToDeactivate}
+        title="Desativar Empresa"
+        message="Atenção: Ao desativar esta empresa, todos os usuários vinculados a ela serão automaticamente desativados e perderão o acesso ao sistema imediatamente."
+        itemName={companyToDeactivate ? `${companyToDeactivate.name} (CNPJ: ${companyToDeactivate.cnpj || 'Não informado'})` : ''}
+        confirmLabel="Sim, Desativar Empresa"
+        isDanger={true}
+        onClose={() => setCompanyToDeactivate(null)}
+        onConfirm={() => companyToDeactivate && executeToggleCompanyActive(companyToDeactivate, false)}
+      />
+
+      {/* Modal de Confirmação para Alteração em Lote de Usuários */}
+      <ConfirmModal
+        isOpen={bulkToggleAction !== null}
+        title={bulkToggleAction ? 'Ativar Todos os Usuários' : 'Desativar Todos os Usuários'}
+        message={`Deseja realmente ${bulkToggleAction ? 'ativar' : 'desativar'} todos os ${companyUsers.length} usuários vinculados à empresa "${selectedCompany?.name}"?`}
+        itemName={selectedCompany ? `${selectedCompany.name} • ${companyUsers.length} usuários` : ''}
+        confirmLabel={bulkToggleAction ? 'Sim, Ativar Todos' : 'Sim, Desativar Todos'}
+        isLoading={loadingUsers}
+        isDanger={!bulkToggleAction}
+        onClose={() => setBulkToggleAction(null)}
+        onConfirm={executeBulkToggleUsers}
+      />
     </div>
   );
 };

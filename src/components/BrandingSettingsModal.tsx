@@ -31,6 +31,7 @@ import { CompanyLogoUploader } from './CompanyLogoUploader';
 import { firebaseService } from '../services/firebase';
 import { api } from '../services/api';
 import { googleSignIn } from '../services/googleDriveService';
+import { ConfirmModal } from './ConfirmModal';
 
 interface BrandingSettingsModalProps {
   isOpen: boolean;
@@ -61,6 +62,10 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
   const [driveStatus, setDriveStatus] = useState<'idle' | 'loading' | 'configured' | 'not_configured'>('idle');
   const [savingDrive, setSavingDrive] = useState(false);
   const [driveFeedback, setDriveFeedback] = useState<string | null>(null);
+  const [confirmRemoveDrive, setConfirmRemoveDrive] = useState(false);
+  const [confirmRemoveLogo, setConfirmRemoveLogo] = useState(false);
+  const [isRemovingDrive, setIsRemovingDrive] = useState(false);
+  const [isRemovingLogo, setIsRemovingLogo] = useState(false);
 
   // Check if current user has administrative permissions for company settings
   const canEditCompany = isAdmin || isManager || isDev;
@@ -132,16 +137,23 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
     }
   };
 
-  const handleRemoveDriveSettings = async () => {
-    if (!confirm('Deseja remover o e-mail vinculado ao Google Drive da empresa?')) return;
+  const handleRemoveDriveSettings = () => {
+    setConfirmRemoveDrive(true);
+  };
+
+  const executeRemoveDriveSettings = async () => {
+    setIsRemovingDrive(true);
     try {
       await api.deleteDriveSettings();
       setDriveEmail('');
       setDriveStatus('not_configured');
       setSuccessMessage('Vínculo do Google Drive removido do perfil da empresa.');
       setTimeout(() => setSuccessMessage(null), 3000);
+      setConfirmRemoveDrive(false);
     } catch (err: any) {
       setErrorMessage('Erro ao desvincular Drive: ' + err.message);
+    } finally {
+      setIsRemovingDrive(false);
     }
   };
 
@@ -252,10 +264,14 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
   /**
    * Remove a logomarca da empresa no Firestore
    */
-  const handleRemoveLogo = async () => {
+  const handleRemoveLogo = () => {
     if (!canEditCompany || !activeCompany?.id) return;
-    if (!confirm('Deseja realmente remover a logomarca oficial da empresa?')) return;
+    setConfirmRemoveLogo(true);
+  };
 
+  const executeRemoveLogo = async () => {
+    if (!canEditCompany || !activeCompany?.id) return;
+    setIsRemovingLogo(true);
     try {
       setUploadStep('saving_firestore');
       await firebaseService.companies.updateCompanyLogo(activeCompany.id, '', '');
@@ -266,9 +282,12 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
       setUploadStep('idle');
       setSuccessMessage('Logomarca removida do documento da empresa no Firestore.');
       setTimeout(() => setSuccessMessage(null), 3000);
+      setConfirmRemoveLogo(false);
     } catch (err: any) {
       setErrorMessage('Erro ao remover logomarca: ' + err.message);
       setUploadStep('idle');
+    } finally {
+      setIsRemovingLogo(false);
     }
   };
 
@@ -953,6 +972,31 @@ export const BrandingSettingsModal: React.FC<BrandingSettingsModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal de Confirmação para Remover Vínculo do Google Drive */}
+      <ConfirmModal
+        isOpen={confirmRemoveDrive}
+        title="Remover Google Drive"
+        message="Deseja remover o e-mail vinculado ao Google Drive da empresa? O sistema deixará de sincronizar arquivos com este e-mail até um novo vínculo."
+        itemName={driveEmail ? `E-mail: ${driveEmail}` : undefined}
+        confirmLabel="Sim, Remover Vínculo"
+        isLoading={isRemovingDrive}
+        isDanger={true}
+        onClose={() => setConfirmRemoveDrive(false)}
+        onConfirm={executeRemoveDriveSettings}
+      />
+
+      {/* Modal de Confirmação para Remover Logomarca */}
+      <ConfirmModal
+        isOpen={confirmRemoveLogo}
+        title="Remover Logomarca Oficial"
+        message="Deseja realmente remover a logomarca oficial da empresa? Os orçamentos e relatórios voltarão a exibir o ícone padrão."
+        confirmLabel="Sim, Remover Logo"
+        isLoading={isRemovingLogo}
+        isDanger={true}
+        onClose={() => setConfirmRemoveLogo(false)}
+        onConfirm={executeRemoveLogo}
+      />
     </div>
   );
 };

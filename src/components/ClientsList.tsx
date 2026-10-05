@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Client } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ClientsListProps {
   onSelectTab?: (tab: string) => void;
@@ -46,6 +47,8 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
   const [formError, setFormError] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [modalSuccessMsg, setModalSuccessMsg] = useState<string | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadClients();
@@ -187,16 +190,27 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
     await saveClient(true);
   };
 
-  const handleDelete = async (client: Client) => {
-    if (!confirm(`Deseja excluir o cliente "${client.name}"?`)) return;
-    setClients((prev) => prev.filter((c) => c.id !== client.id));
+  const handleDelete = (client: Client) => {
+    setClientToDelete(client);
+  };
+
+  const confirmDeleteClient = async () => {
+    if (!clientToDelete) return;
+    const targetId = clientToDelete.id;
+    const targetName = clientToDelete.name;
+    setDeleting(true);
     try {
-      await api.deleteClient(client.id);
-      showFeedback('Cliente excluído com sucesso!');
-      loadClients();
+      await api.deleteClient(targetId);
+      setClients((prev) => prev.filter((c) => c.id !== targetId));
+      showFeedback(`Cliente "${targetName}" excluído com sucesso!`);
+      setClientToDelete(null);
+      setModalOpen(false);
+      setClientToEdit(null);
+      await loadClients(true);
     } catch (err: any) {
-      alert('Erro ao excluir: ' + err.message);
-      loadClients();
+      showFeedback('Erro ao excluir cliente: ' + (err.message || 'Falha de comunicação.'));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -325,14 +339,22 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
 
               <div className="flex items-center justify-end gap-1 pt-2 border-t border-slate-100">
                 <button
-                  onClick={() => openEditModal(client)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditModal(client);
+                  }}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                   title="Editar cliente"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => handleDelete(client)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(client);
+                  }}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
                   title="Excluir cliente"
                 >
@@ -519,13 +541,29 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
 
               {/* Ações com suporte a cadastro em sequência */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer transition text-xs sm:text-sm"
-                >
-                  Cancelar
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer transition text-xs sm:text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  {clientToEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = clientToEdit;
+                        handleDelete(target);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 font-bold transition text-xs sm:text-sm cursor-pointer active:scale-98"
+                      title="Excluir este cliente do sistema"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Excluir Cliente</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   {!clientToEdit && (
@@ -563,6 +601,19 @@ export const ClientsList: React.FC<ClientsListProps> = ({ onSelectTab }) => {
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação de Exclusão (sem window.confirm) */}
+      <ConfirmModal
+        isOpen={!!clientToDelete}
+        title="Excluir Cliente"
+        message="Tem certeza que deseja excluir permanentemente este cliente do sistema? Esta ação não poderá ser desfeita."
+        itemName={clientToDelete ? `${clientToDelete.name}${clientToDelete.document ? ` • Doc: ${clientToDelete.document}` : ''}` : ''}
+        confirmLabel="Sim, Excluir Cliente"
+        isLoading={deleting}
+        isDanger={true}
+        onClose={() => setClientToDelete(null)}
+        onConfirm={confirmDeleteClient}
+      />
     </div>
   );
 };

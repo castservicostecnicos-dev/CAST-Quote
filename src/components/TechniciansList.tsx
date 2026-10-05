@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Plus, Search, Edit2, Trash2, Phone, Mail, BadgeCheck, Building } from 'lucide-react';
+import { UserCheck, Plus, Search, Edit2, Trash2, Phone, Mail, BadgeCheck, Building, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Technician } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 interface TechniciansListProps {
   onSelectTab?: (tab: string) => void;
@@ -16,6 +17,9 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [techToEdit, setTechToEdit] = useState<Technician | null>(null);
+  const [techToDelete, setTechToDelete] = useState<Technician | null>(null);
+  const [deletingTech, setDeletingTech] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   // Form State
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -29,6 +33,11 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
   useEffect(() => {
     loadTechnicians();
   }, [activeCompany?.id, user?.role]);
+
+  const showFeedback = (msg: string) => {
+    setFeedbackMsg(msg);
+    setTimeout(() => setFeedbackMsg(null), 3500);
+  };
 
   const loadTechnicians = async () => {
     setLoading(true);
@@ -89,28 +98,42 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
         setTechnicians((prev) =>
           prev.map((t) => (t.id === techToEdit.id ? { ...t, ...payload, ...updated } : t))
         );
+        showFeedback(`Técnico "${payload.name}" atualizado com sucesso!`);
       } else {
         const created = await api.createTechnician(payload);
         setTechnicians((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
+        showFeedback(`Técnico "${payload.name}" cadastrado com sucesso!`);
       }
       setModalOpen(false);
       loadTechnicians();
     } catch (err: any) {
-      alert('Erro ao salvar técnico: ' + err.message);
+      showFeedback('Erro ao salvar técnico: ' + (err.message || 'Falha de comunicação.'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (t: Technician) => {
-    if (!confirm(`Deseja excluir o cadastro do técnico "${t.name}"?`)) return;
+  const handleDelete = (t: Technician) => {
+    setTechToDelete(t);
+  };
+
+  const confirmDeleteTechnician = async () => {
+    if (!techToDelete) return;
+    const targetId = techToDelete.id;
+    const targetName = techToDelete.name;
+    setDeletingTech(true);
     try {
-      setTechnicians((prev) => prev.filter((item) => item.id !== t.id));
-      await api.deleteTechnician(t.id);
-      loadTechnicians();
+      await api.deleteTechnician(targetId);
+      setTechnicians((prev) => prev.filter((item) => item.id !== targetId));
+      showFeedback(`Técnico "${targetName}" excluído com sucesso!`);
+      setTechToDelete(null);
+      setModalOpen(false);
+      setTechToEdit(null);
+      await loadTechnicians();
     } catch (err: any) {
-      alert('Erro ao excluir: ' + err.message);
-      loadTechnicians();
+      showFeedback('Erro ao excluir: ' + (err.message || 'Falha na comunicação.'));
+    } finally {
+      setDeletingTech(false);
     }
   };
 
@@ -121,6 +144,14 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* Toast Feedback */}
+      {feedbackMsg && (
+        <div className="fixed top-20 right-5 z-50 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -198,16 +229,24 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
                   {canManage && (
                     <>
                       <button
-                        onClick={() => openEditModal(t)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition"
-                        title="Editar"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(t);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                        title="Editar técnico"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(t)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                        title="Excluir"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(t);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                        title="Excluir técnico"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -335,26 +374,55 @@ export const TechniciansList: React.FC<TechniciansListProps> = ({ onSelectTab })
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-slate-200">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer text-xs sm:text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  {techToEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = techToEdit;
+                        handleDelete(target);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 font-bold transition text-xs sm:text-sm cursor-pointer"
+                      title="Excluir cadastro deste técnico"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Excluir Técnico</span>
+                    </button>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition cursor-pointer text-xs sm:text-sm shadow-xs"
                 >
-                  {saving ? 'Salvando...' : 'Salvar Técnico'}
+                  {saving ? 'Salvando...' : techToEdit ? 'Atualizar Técnico' : 'Salvar Técnico'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação de Exclusão de Técnico */}
+      <ConfirmModal
+        isOpen={!!techToDelete}
+        title="Excluir Técnico"
+        message="Tem certeza que deseja excluir o cadastro deste técnico? O histórico de ordens de serviço anteriores permanecerá preservado."
+        itemName={techToDelete ? `${techToDelete.name} (${techToDelete.role_title || 'Técnico'})` : ''}
+        confirmLabel="Sim, Excluir Técnico"
+        isLoading={deletingTech}
+        isDanger={true}
+        onClose={() => setTechToDelete(null)}
+        onConfirm={confirmDeleteTechnician}
+      />
     </div>
   );
 };

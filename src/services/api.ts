@@ -241,11 +241,18 @@ export const api = {
 
   deleteCompany: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/companies/${id}`, { method: 'DELETE' });
+      const res = await fetchWithTimeout(`${BASE_URL}/companies/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir empresa localmente:', res.status);
+      }
     } catch (err) {
       console.warn('Erro ao deletar empresa localmente:', err);
     }
-    firebaseService.companies.delete(id).catch(() => {});
+    try {
+      await firebaseService.companies.delete(id);
+    } catch (err) {
+      console.warn('Erro ao deletar empresa no Firestore:', err);
+    }
     try {
       setCachedCompanies(getCachedCompanies().filter(c => c.id !== id));
     } catch {}
@@ -594,9 +601,18 @@ export const api = {
 
   deleteTechnician: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/technicians/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-    firebaseService.technicians.delete(id).catch(() => {});
+      const res = await fetchWithTimeout(`${BASE_URL}/technicians/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir técnico localmente:', res.status);
+      }
+    } catch (err) {
+      console.warn('Erro ao excluir técnico localmente:', err);
+    }
+    try {
+      await firebaseService.technicians.delete(id);
+    } catch (err) {
+      console.warn('Erro ao excluir técnico no Firestore:', err);
+    }
     return { success: true };
   },
 
@@ -670,9 +686,18 @@ export const api = {
 
   deleteClient: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/clients/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-    firebaseService.clients.delete(id).catch(() => {});
+      const res = await fetchWithTimeout(`${BASE_URL}/clients/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir cliente na API local:', res.status);
+      }
+    } catch (err) {
+      console.warn('Erro ao excluir cliente localmente:', err);
+    }
+    try {
+      await firebaseService.clients.delete(id);
+    } catch (err) {
+      console.warn('Erro ao excluir cliente no Firestore:', err);
+    }
     return { success: true };
   },
 
@@ -754,9 +779,18 @@ export const api = {
 
   deleteService: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/services/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-    firebaseService.services.delete(id).catch(() => {});
+      const res = await fetchWithTimeout(`${BASE_URL}/services/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir serviço localmente:', res.status);
+      }
+    } catch (err) {
+      console.warn('Erro ao excluir serviço localmente:', err);
+    }
+    try {
+      await firebaseService.services.delete(id);
+    } catch (err) {
+      console.warn('Erro ao excluir serviço no Firestore:', err);
+    }
     return { success: true };
   },
 
@@ -1003,9 +1037,18 @@ export const api = {
 
   deleteQuote: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/quotes/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-    firebaseService.quotes.delete(id).catch(() => {});
+      const res = await fetchWithTimeout(`${BASE_URL}/quotes/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir orçamento localmente:', res.status);
+      }
+    } catch (err) {
+      console.warn('Erro ao excluir orçamento localmente:', err);
+    }
+    try {
+      await firebaseService.quotes.delete(id);
+    } catch (err) {
+      console.warn('Erro ao excluir orçamento no Firestore:', err);
+    }
     return { success: true };
   },
 
@@ -1278,9 +1321,18 @@ export const api = {
 
   deleteWorkOrder: async (id: string): Promise<{ success: boolean }> => {
     try {
-      await fetch(`${BASE_URL}/work-orders/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-    firebaseService.workOrders.delete(id).catch(() => {});
+      const res = await fetchWithTimeout(`${BASE_URL}/work-orders/${id}`, { method: 'DELETE' }, 4000);
+      if (!res.ok) {
+        console.warn('Aviso ao excluir ordem de serviço localmente:', res.status);
+      }
+    } catch (err) {
+      console.warn('Erro ao excluir ordem de serviço localmente:', err);
+    }
+    try {
+      await firebaseService.workOrders.delete(id);
+    } catch (err) {
+      console.warn('Erro ao excluir ordem de serviço no Firestore:', err);
+    }
     return { success: true };
   },
 

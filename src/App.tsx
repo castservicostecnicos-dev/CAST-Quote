@@ -9,7 +9,6 @@ import { WorkOrdersList } from './components/WorkOrdersList';
 import { WorkOrderModal } from './components/WorkOrderModal';
 import { ClientsList } from './components/ClientsList';
 import { TechniciansList } from './components/TechniciansList';
-import { ServicesList } from './components/ServicesList';
 import { UsersList } from './components/UsersList';
 import { CompaniesList } from './components/CompaniesList';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
@@ -43,19 +42,19 @@ function MainApp() {
   // Fallback if current tab is not allowed for user role
   const activeSafeTab = React.useMemo(() => {
     if (isDev) {
-      if (['companies', 'demo', 'services', 'clients', 'technicians', 'quotes', 'work-orders', 'users', 'dashboard'].includes(currentTab)) {
+      if (['companies', 'demo', 'clients', 'technicians', 'quotes', 'work-orders', 'users', 'dashboard'].includes(currentTab)) {
         return currentTab;
       }
       return 'companies';
     }
     if (isManagerOrAdmin) {
-      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'services', 'users'].includes(currentTab)) {
+      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'users'].includes(currentTab)) {
         return currentTab;
       }
       return 'dashboard';
     }
     if (user?.role === 'SUPERVISOR') {
-      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians', 'services'].includes(currentTab)) {
+      if (['dashboard', 'quotes', 'work-orders', 'clients', 'technicians'].includes(currentTab)) {
         return currentTab;
       }
       return 'dashboard';
@@ -231,8 +230,6 @@ function MainApp() {
         {activeSafeTab === 'clients' && <ClientsList />}
 
         {activeSafeTab === 'technicians' && <TechniciansList />}
-
-        {activeSafeTab === 'services' && <ServicesList />}
 
         {activeSafeTab === 'users' && <UsersList />}
 

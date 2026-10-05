@@ -16,13 +16,15 @@ import {
   MoreVertical,
   Building,
   PenTool,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Quote } from '../types';
 import { exportQuotesToExcel } from '../utils/excelExporter';
 import { SignatureModal } from './SignatureModal';
+import { ConfirmModal } from './ConfirmModal';
 
 interface QuotesListProps {
   onNewQuote: () => void;
@@ -64,11 +66,23 @@ export const QuotesList: React.FC<QuotesListProps> = ({
         client_signature: sigData,
         client_signed_at: new Date().toISOString()
       });
+      showToast('Assinatura salva com sucesso!');
       loadQuotes();
     } catch (err: any) {
       console.error('Erro ao salvar assinatura:', err);
-      alert('Erro ao salvar assinatura: ' + (err.message || 'Tente novamente'));
+      showToast('Erro ao salvar assinatura: ' + (err.message || 'Tente novamente'), 'error');
     }
+  };
+
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null);
+  const [quoteToDuplicate, setQuoteToDuplicate] = useState<Quote | null>(null);
+  const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setFeedbackMsg({ text, type });
+    setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
   useEffect(() => {
@@ -97,37 +111,64 @@ export const QuotesList: React.FC<QuotesListProps> = ({
     loadQuotes();
   };
 
-  const handleDuplicate = async (quote: Quote) => {
-    if (!confirm(`Deseja duplicar o orçamento #${quote.quote_number}?`)) return;
+  const handleDuplicate = (quote: Quote) => {
+    setActionMenuId(null);
+    setQuoteToDuplicate(quote);
+  };
+
+  const confirmDuplicate = async () => {
+    if (!quoteToDuplicate) return;
+    setModalLoading(true);
     try {
-      const res = await api.duplicateQuote(quote.id);
-      alert(res.message);
+      const res = await api.duplicateQuote(quoteToDuplicate.id);
+      showToast(res.message || `Orçamento #${quoteToDuplicate.quote_number} duplicado com sucesso!`);
+      setQuoteToDuplicate(null);
       loadQuotes();
     } catch (err: any) {
-      alert('Erro ao duplicar orçamento: ' + err.message);
+      showToast('Erro ao duplicar orçamento: ' + (err.message || 'Falha na operação'), 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
-  const handleDelete = async (quote: Quote) => {
-    if (!confirm(`Atenção: tem certeza que deseja excluir o orçamento #${quote.quote_number}?`)) return;
+  const handleDelete = (quote: Quote) => {
+    setActionMenuId(null);
+    setQuoteToDelete(quote);
+  };
+
+  const confirmDelete = async () => {
+    if (!quoteToDelete) return;
+    setModalLoading(true);
     try {
-      await api.deleteQuote(quote.id);
+      await api.deleteQuote(quoteToDelete.id);
+      setQuotes((prev) => prev.filter((q) => q.id !== quoteToDelete.id));
+      showToast(`Orçamento #${quoteToDelete.quote_number} excluído com sucesso!`);
+      setQuoteToDelete(null);
       loadQuotes();
     } catch (err: any) {
-      alert('Erro ao excluir: ' + err.message);
+      showToast('Erro ao excluir: ' + (err.message || 'Falha na comunicação'), 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
-  const handleConvertToWorkOrder = async (quote: Quote) => {
-    if (!confirm(`Deseja converter o orçamento #${quote.quote_number} em uma nova Ordem de Serviço com todos os itens, valores e fotos?`)) {
-      return;
-    }
+  const handleConvertToWorkOrder = (quote: Quote) => {
+    setActionMenuId(null);
+    setQuoteToConvert(quote);
+  };
+
+  const confirmConvert = async () => {
+    if (!quoteToConvert) return;
+    setModalLoading(true);
     try {
-      const res = await api.createWorkOrderFromQuote(quote.id);
-      alert(res.message);
+      const res = await api.createWorkOrderFromQuote(quoteToConvert.id);
+      showToast(res.message || `Orçamento #${quoteToConvert.quote_number} convertido em Ordem de Serviço!`);
+      setQuoteToConvert(null);
       loadQuotes();
     } catch (err: any) {
-      alert('Erro ao converter em OS: ' + err.message);
+      showToast('Erro ao converter em OS: ' + (err.message || 'Falha na operação'), 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -557,6 +598,61 @@ export const QuotesList: React.FC<QuotesListProps> = ({
           initialSignature={signingQuote.client_signature}
         />
       )}
+
+      {/* Toast Feedback */}
+      {feedbackMsg && (
+        <div
+          className={`fixed top-20 right-5 z-50 rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${
+            feedbackMsg.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
+          }`}
+        >
+          {feedbackMsg.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          )}
+          <span>{feedbackMsg.text}</span>
+        </div>
+      )}
+
+      {/* Modal de Exclusão de Orçamento */}
+      <ConfirmModal
+        isOpen={!!quoteToDelete}
+        title="Excluir Orçamento"
+        message="Tem certeza que deseja excluir permanentemente este orçamento? Todos os itens e fotos vinculados também serão removidos."
+        itemName={quoteToDelete ? `Orçamento #${quoteToDelete.quote_number} • ${quoteToDelete.client_name || 'Cliente'} (${formatBrl(quoteToDelete.total)})` : ''}
+        confirmLabel="Sim, Excluir Orçamento"
+        isLoading={modalLoading}
+        isDanger={true}
+        onClose={() => setQuoteToDelete(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Modal de Duplicação de Orçamento */}
+      <ConfirmModal
+        isOpen={!!quoteToDuplicate}
+        title="Duplicar Orçamento"
+        message="Deseja criar uma cópia deste orçamento com todos os itens e valores? O novo orçamento receberá uma nova numeração sequencial."
+        itemName={quoteToDuplicate ? `Orçamento #${quoteToDuplicate.quote_number} • ${quoteToDuplicate.client_name || 'Cliente'}` : ''}
+        confirmLabel="Sim, Duplicar"
+        isLoading={modalLoading}
+        isDanger={false}
+        onClose={() => setQuoteToDuplicate(null)}
+        onConfirm={confirmDuplicate}
+      />
+
+      {/* Modal de Conversão em Ordem de Serviço */}
+      <ConfirmModal
+        isOpen={!!quoteToConvert}
+        title="Converter em Ordem de Serviço"
+        message="Deseja converter este orçamento em uma nova Ordem de Serviço (OS)? Todos os dados, itens e fotos serão transferidos para a equipe técnica executar em campo."
+        itemName={quoteToConvert ? `Orçamento #${quoteToConvert.quote_number} • ${quoteToConvert.client_name || 'Cliente'}` : ''}
+        confirmLabel="Sim, Converter em OS"
+        isLoading={modalLoading}
+        isDanger={false}
+        onClose={() => setQuoteToConvert(null)}
+        onConfirm={confirmConvert}
+      />
     </div>
   );
 };

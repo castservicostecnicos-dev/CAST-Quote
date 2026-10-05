@@ -23,6 +23,7 @@ import { api } from '../services/api';
 import { WorkOrder } from '../types';
 import { exportWorkOrdersToExcel } from '../utils/excelExporter';
 import { SignatureModal } from './SignatureModal';
+import { ConfirmModal } from './ConfirmModal';
 
 interface WorkOrdersListProps {
   onNewWorkOrder: () => void;
@@ -75,24 +76,52 @@ export const WorkOrdersList: React.FC<WorkOrdersListProps> = ({
     loadOrders();
   };
 
-  const handleDuplicate = async (order: WorkOrder) => {
-    if (!confirm(`Deseja duplicar a OS #${order.order_number}?`)) return;
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<WorkOrder | null>(null);
+  const [orderToDuplicate, setOrderToDuplicate] = useState<WorkOrder | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setFeedbackMsg({ text, type });
+    setTimeout(() => setFeedbackMsg(null), 3500);
+  };
+
+  const handleDuplicate = (order: WorkOrder) => {
+    setOrderToDuplicate(order);
+  };
+
+  const confirmDuplicate = async () => {
+    if (!orderToDuplicate) return;
+    setModalLoading(true);
     try {
-      const res = await api.duplicateWorkOrder(order.id);
-      alert(res.message);
+      const res = await api.duplicateWorkOrder(orderToDuplicate.id);
+      showToast(res.message || `OS #${orderToDuplicate.order_number} duplicada com sucesso!`);
+      setOrderToDuplicate(null);
       loadOrders();
     } catch (err: any) {
-      alert('Erro ao duplicar OS: ' + err.message);
+      showToast('Erro ao duplicar OS: ' + (err.message || 'Falha na operação'), 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
-  const handleDelete = async (order: WorkOrder) => {
-    if (!confirm(`Atenção: tem certeza que deseja excluir a OS #${order.order_number}?`)) return;
+  const handleDelete = (order: WorkOrder) => {
+    setOrderToDelete(order);
+  };
+
+  const confirmDelete = async () => {
+    if (!orderToDelete) return;
+    setModalLoading(true);
     try {
-      await api.deleteWorkOrder(order.id);
+      await api.deleteWorkOrder(orderToDelete.id);
+      setOrders((prev) => prev.filter((o) => o.id !== orderToDelete.id));
+      showToast(`OS #${orderToDelete.order_number} excluída com sucesso!`);
+      setOrderToDelete(null);
       loadOrders();
     } catch (err: any) {
-      alert('Erro ao excluir: ' + err.message);
+      showToast('Erro ao excluir OS: ' + (err.message || 'Falha na comunicação'), 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -515,6 +544,48 @@ export const WorkOrdersList: React.FC<WorkOrdersListProps> = ({
           }}
         />
       )}
+
+      {/* Toast Feedback */}
+      {feedbackMsg && (
+        <div
+          className={`fixed top-20 right-5 z-50 rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${
+            feedbackMsg.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
+          }`}
+        >
+          {feedbackMsg.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          )}
+          <span>{feedbackMsg.text}</span>
+        </div>
+      )}
+
+      {/* Modal de Exclusão de Ordem de Serviço */}
+      <ConfirmModal
+        isOpen={!!orderToDelete}
+        title="Excluir Ordem de Serviço"
+        message="Tem certeza que deseja excluir permanentemente esta Ordem de Serviço (OS)? Todos os itens e fotos técnicas registradas em campo também serão removidos."
+        itemName={orderToDelete ? `OS #${orderToDelete.order_number} • ${orderToDelete.client_name || 'Cliente'} (${formatBrl(orderToDelete.total)})` : ''}
+        confirmLabel="Sim, Excluir OS"
+        isLoading={modalLoading}
+        isDanger={true}
+        onClose={() => setOrderToDelete(null)}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Modal de Duplicação de Ordem de Serviço */}
+      <ConfirmModal
+        isOpen={!!orderToDuplicate}
+        title="Duplicar Ordem de Serviço"
+        message="Deseja criar uma cópia desta Ordem de Serviço com todos os itens, serviços e valores? A nova OS receberá uma numeração sequencial exclusiva."
+        itemName={orderToDuplicate ? `OS #${orderToDuplicate.order_number} • ${orderToDuplicate.client_name || 'Cliente'}` : ''}
+        confirmLabel="Sim, Duplicar OS"
+        isLoading={modalLoading}
+        isDanger={false}
+        onClose={() => setOrderToDuplicate(null)}
+        onConfirm={confirmDuplicate}
+      />
     </div>
   );
 };

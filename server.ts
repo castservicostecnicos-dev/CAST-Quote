@@ -1157,6 +1157,31 @@ async function startServer() {
       sql += ` ORDER BY q.quote_number DESC`;
 
       const quotes = queryAll(sql, params);
+
+      if (quotes && quotes.length > 0) {
+        const quoteIds = quotes.map((q: any) => q.id);
+        const placeholders = quoteIds.map(() => '?').join(',');
+        
+        const allItems = queryAll(`SELECT * FROM quote_items WHERE quote_id IN (${placeholders}) ORDER BY id ASC`, quoteIds);
+        const itemsByQuoteId: Record<string, any[]> = {};
+        for (const item of allItems) {
+          if (!itemsByQuoteId[item.quote_id]) itemsByQuoteId[item.quote_id] = [];
+          itemsByQuoteId[item.quote_id].push(item);
+        }
+
+        const allPhotos = queryAll(`SELECT * FROM quote_photos WHERE quote_id IN (${placeholders}) ORDER BY created_at ASC`, quoteIds);
+        const photosByQuoteId: Record<string, any[]> = {};
+        for (const photo of allPhotos) {
+          if (!photosByQuoteId[photo.quote_id]) photosByQuoteId[photo.quote_id] = [];
+          photosByQuoteId[photo.quote_id].push(photo);
+        }
+
+        for (const q of quotes) {
+          q.items = itemsByQuoteId[q.id] || [];
+          q.photos = photosByQuoteId[q.id] || [];
+        }
+      }
+
       return res.json(quotes);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -1563,6 +1588,31 @@ async function startServer() {
       sql += ` ORDER BY wo.order_number DESC`;
 
       const orders = queryAll(sql, params);
+
+      if (orders && orders.length > 0) {
+        const orderIds = orders.map((o: any) => o.id);
+        const placeholders = orderIds.map(() => '?').join(',');
+
+        const allItems = queryAll(`SELECT * FROM work_order_items WHERE work_order_id IN (${placeholders}) ORDER BY id ASC`, orderIds);
+        const itemsByOrderId: Record<string, any[]> = {};
+        for (const item of allItems) {
+          if (!itemsByOrderId[item.work_order_id]) itemsByOrderId[item.work_order_id] = [];
+          itemsByOrderId[item.work_order_id].push(item);
+        }
+
+        const allPhotos = queryAll(`SELECT * FROM work_order_photos WHERE work_order_id IN (${placeholders}) ORDER BY created_at ASC`, orderIds);
+        const photosByOrderId: Record<string, any[]> = {};
+        for (const photo of allPhotos) {
+          if (!photosByOrderId[photo.work_order_id]) photosByOrderId[photo.work_order_id] = [];
+          photosByOrderId[photo.work_order_id].push(photo);
+        }
+
+        for (const o of orders) {
+          o.items = itemsByOrderId[o.id] || [];
+          o.photos = photosByOrderId[o.id] || [];
+        }
+      }
+
       return res.json(orders);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });

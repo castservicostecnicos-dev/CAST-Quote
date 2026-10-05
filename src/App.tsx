@@ -121,28 +121,52 @@ function MainApp() {
     setQuoteModalOpen(true);
   };
 
-  const handleViewQuote = (q: Quote) => {
+  const handleViewQuote = async (q: Quote) => {
     setPdfType('ORÇAMENTO');
     setPdfDoc(q);
     setPdfModalOpen(true);
+    if (!q.items || q.items.length === 0) {
+      try {
+        const full = await api.getQuote(q.id);
+        if (full) setPdfDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenQuotePdf = (q: Quote) => {
+  const handleOpenQuotePdf = async (q: Quote) => {
     setPdfType('ORÇAMENTO');
     setPdfDoc(q);
     setPdfModalOpen(true);
+    if (!q.items || q.items.length === 0) {
+      try {
+        const full = await api.getQuote(q.id);
+        if (full) setPdfDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenQuoteShare = (q: Quote) => {
+  const handleOpenQuoteShare = async (q: Quote) => {
     setShareType('ORÇAMENTO');
     setShareDoc(q);
     setShareModalOpen(true);
+    if (!q.items || q.items.length === 0) {
+      try {
+        const full = await api.getQuote(q.id);
+        if (full) setShareDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenQuoteDrive = (q: Quote) => {
+  const handleOpenQuoteDrive = async (q: Quote) => {
     setDriveType('ORÇAMENTO');
     setDriveDoc(q);
     setDriveModalOpen(true);
+    if (!q.items || q.items.length === 0) {
+      try {
+        const full = await api.getQuote(q.id);
+        if (full) setDriveDoc(full);
+      } catch {}
+    }
   };
 
   const handleNewWorkOrder = () => {
@@ -155,28 +179,52 @@ function MainApp() {
     setOrderModalOpen(true);
   };
 
-  const handleViewWorkOrder = (o: WorkOrder) => {
+  const handleViewWorkOrder = async (o: WorkOrder) => {
     setPdfType('ORDEM DE SERVIÇO');
     setPdfDoc(o);
     setPdfModalOpen(true);
+    if (!o.items || o.items.length === 0) {
+      try {
+        const full = await api.getWorkOrder(o.id);
+        if (full) setPdfDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenOrderPdf = (o: WorkOrder) => {
+  const handleOpenOrderPdf = async (o: WorkOrder) => {
     setPdfType('ORDEM DE SERVIÇO');
     setPdfDoc(o);
     setPdfModalOpen(true);
+    if (!o.items || o.items.length === 0) {
+      try {
+        const full = await api.getWorkOrder(o.id);
+        if (full) setPdfDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenOrderShare = (o: WorkOrder) => {
+  const handleOpenOrderShare = async (o: WorkOrder) => {
     setShareType('ORDEM DE SERVIÇO');
     setShareDoc(o);
     setShareModalOpen(true);
+    if (!o.items || o.items.length === 0) {
+      try {
+        const full = await api.getWorkOrder(o.id);
+        if (full) setShareDoc(full);
+      } catch {}
+    }
   };
 
-  const handleOpenOrderDrive = (o: WorkOrder) => {
+  const handleOpenOrderDrive = async (o: WorkOrder) => {
     setDriveType('ORDEM DE SERVIÇO');
     setDriveDoc(o);
     setDriveModalOpen(true);
+    if (!o.items || o.items.length === 0) {
+      try {
+        const full = await api.getWorkOrder(o.id);
+        if (full) setDriveDoc(full);
+      } catch {}
+    }
   };
 
   return (

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Download, FileSpreadsheet, Share2, Cloud, X, Printer } from 'lucide-react';
+import { Download, FileSpreadsheet, Share2, Cloud, X, Printer, PackageCheck } from 'lucide-react';
 import { Quote, WorkOrder, Company } from '../types';
 import { generateDocumentPdf, generateDocumentPdfAsync } from '../utils/pdfGenerator';
 import { exportSingleDocumentToExcel } from '../utils/excelExporter';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 interface PdfPreviewModalProps {
   isOpen: boolean;
@@ -25,12 +26,49 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   onOpenDrive
 }) => {
   const { isDev } = useAuth();
+  const [fullData, setFullData] = useState<Quote | WorkOrder | null>(data);
   const [pdfDataUri, setPdfDataUri] = useState<string | null>(null);
+  const [isLoadingItems, setIsLoadingItems] = useState(false);
+
+  // Proactively fetch full document (items & photos) if not present in the passed object
+  useEffect(() => {
+    setFullData(data);
+    let isCancelled = false;
+
+    if (isOpen && data?.id) {
+      const hasItems = Array.isArray(data.items) && data.items.length > 0;
+      if (!hasItems) {
+        setIsLoadingItems(true);
+        const fetchPromise = type === 'ORÇAMENTO'
+          ? api.getQuote(data.id)
+          : api.getWorkOrder(data.id);
+
+        fetchPromise
+          .then((fullDoc) => {
+            if (!isCancelled && fullDoc) {
+              setFullData(fullDoc);
+            }
+          })
+          .catch((err) => {
+            console.warn('Não foi possível obter itens completos do documento:', err);
+          })
+          .finally(() => {
+            if (!isCancelled) setIsLoadingItems(false);
+          });
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, data, type]);
+
+  const activeDoc = fullData || data;
 
   useEffect(() => {
     let isCurrent = true;
-    if (isOpen && data) {
-      generateDocumentPdfAsync({ type, data, company })
+    if (isOpen && activeDoc) {
+      generateDocumentPdfAsync({ type, data: activeDoc, company })
         .then((doc) => {
           if (isCurrent) {
             setPdfDataUri(doc.output('datauristring'));
@@ -40,7 +78,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           console.error('Failed to generate PDF preview asynchronously:', err);
           if (isCurrent) {
             try {
-              const fallbackDoc = generateDocumentPdf({ type, data, company });
+              const fallbackDoc = generateDocumentPdf({ type, data: activeDoc, company });
               setPdfDataUri(fallbackDoc.output('datauristring'));
             } catch (fallbackErr) {
               console.error('Fallback PDF generation also failed:', fallbackErr);
@@ -53,41 +91,42 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [isOpen, data, type, company]);
+  }, [isOpen, activeDoc, type, company]);
 
-  if (!isOpen || !data) return null;
+  if (!isOpen || !activeDoc) return null;
 
   const isQuote = type === 'ORÇAMENTO';
-  const docNumber = isQuote ? (data as Quote).quote_number : (data as WorkOrder).order_number;
+  const docNumber = isQuote ? (activeDoc as Quote).quote_number : (activeDoc as WorkOrder).order_number;
   const filename = `CAST_${type.replace(/\s+/g, '_')}_${docNumber}.pdf`;
 
   const handleDownloadPdf = async () => {
     try {
-      const doc = await generateDocumentPdfAsync({ type, data, company });
+      const doc = await generateDocumentPdfAsync({ type, data: activeDoc, company });
       doc.save(filename);
     } catch {
-      const doc = generateDocumentPdf({ type, data, company });
+      const doc = generateDocumentPdf({ type, data: activeDoc, company });
       doc.save(filename);
     }
   };
 
   const handlePrint = async () => {
     try {
-      const doc = await generateDocumentPdfAsync({ type, data, company });
+      const doc = await generateDocumentPdfAsync({ type, data: activeDoc, company });
       doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
     } catch {
-      const doc = generateDocumentPdf({ type, data, company });
+      const doc = generateDocumentPdf({ type, data: activeDoc, company });
       doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
     }
   };
 
   const handleExcelExport = () => {
-    exportSingleDocumentToExcel(type, data);
+    exportSingleDocumentToExcel(type, activeDoc);
   };
 
   const brandColor = company?.primary_color || '#2563eb';
+  const itemCount = activeDoc.items?.length || 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-2 sm:p-4 backdrop-blur-xs">
@@ -103,7 +142,18 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                 {type}
               </span>
               <h2 className="text-base font-bold">Nº {docNumber}</h2>
-              <span className="text-xs text-slate-400">({data.client_name})</span>
+              <span className="text-xs text-slate-300">({activeDoc.client_name})</span>
+              {itemCount > 0 ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-slate-700">
+                  <PackageCheck className="w-3 h-3 text-emerald-400" />
+                  <span>{itemCount} {itemCount === 1 ? 'item' : 'itens'}</span>
+                </span>
+              ) : isLoadingItems ? (
+                <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 animate-pulse">
+                  <div className="w-2.5 h-2.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  <span>Carregando itens...</span>
+                </span>
+              ) : null}
             </div>
           </div>
 

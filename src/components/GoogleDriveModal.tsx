@@ -71,6 +71,34 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [configuredDriveEmail, setConfiguredDriveEmail] = useState<string | null>(null);
+  const [fullData, setFullData] = useState<Quote | WorkOrder | null>(data);
+
+  // Proactively fetch full document (items & photos) if not present in the passed object
+  useEffect(() => {
+    setFullData(data);
+    let isCancelled = false;
+
+    if (isOpen && data?.id) {
+      const hasItems = Array.isArray(data.items) && data.items.length > 0;
+      if (!hasItems) {
+        const fetchPromise = type === 'ORÇAMENTO'
+          ? api.getQuote(data.id)
+          : api.getWorkOrder(data.id);
+
+        fetchPromise
+          .then((fullDoc) => {
+            if (!isCancelled && fullDoc) {
+              setFullData(fullDoc);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, data, type]);
 
   useEffect(() => {
     if (isOpen) {
@@ -80,8 +108,9 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       setCopied(false);
       setProgress(null);
 
+      const active = fullData || data;
       // Preload client email if available
-      const initialClientEmail = (data as any)?.client_email || (data as any)?.email || (data as any)?.client?.email || '';
+      const initialClientEmail = (active as any)?.client_email || (active as any)?.email || (active as any)?.client?.email || '';
       setClientEmailInput(initialClientEmail);
 
       // Check configured backend account
@@ -200,11 +229,13 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         total: 100
       });
 
+      const activeDoc = fullData || data;
+
       let doc;
       try {
-        doc = await generateDocumentPdfAsync({ type, data, company });
+        doc = await generateDocumentPdfAsync({ type, data: activeDoc, company });
       } catch {
-        doc = generateDocumentPdf({ type, data, company });
+        doc = generateDocumentPdf({ type, data: activeDoc, company });
       }
       const pdfBlob = doc.output('blob');
 
@@ -212,8 +243,8 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       const result = await uploadDocumentAndAssetsToDrive({
         type,
         data: {
-          ...data,
-          client_email: clientEmailInput.trim() || (data as any).client_email || (data as any).email
+          ...activeDoc,
+          client_email: clientEmailInput.trim() || (activeDoc as any).client_email || (activeDoc as any).email
         },
         companyName: compName,
         pdfBlob,

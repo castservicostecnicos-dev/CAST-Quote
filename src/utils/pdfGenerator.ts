@@ -197,18 +197,33 @@ export function generateDocumentPdf({ type, data, company, imageMap }: DocumentP
   // ====================================================
   // 4. ITEMS & SERVICES TABLE
   // ====================================================
-  const items = data.items || [];
-  const tableRows = items.map((item, index) => [
-    index + 1,
-    item.item_type === 'servico' ? 'SERVIÇO' : 'MATERIAL',
-    item.description,
-    `${item.quantity} ${item.unit || 'UN'}`,
-    formatBrl(item.unit_price),
-    formatBrl(item.total_price)
-  ]);
+  const items = Array.isArray(data.items) ? data.items : [];
+  const tableRows = items.map((item, index) => {
+    const rawType = (item.item_type || '').toLowerCase();
+    const typeLabel = (rawType.includes('mat') || rawType.includes('prod') || rawType.includes('insum') || rawType.includes('pec'))
+      ? 'MATERIAL'
+      : 'SERVIÇO';
+    const desc = item.description || (item as any).name || 'Serviço/Item Técnico Especializado';
+    const qty = Number(item.quantity) || 1;
+    const unit = item.unit || 'UN';
+    const unitPrice = Number(item.unit_price) || 0;
+    const totalPrice = Number(item.total_price) || (qty * unitPrice);
+
+    return [
+      index + 1,
+      typeLabel,
+      desc,
+      `${qty} ${unit}`,
+      formatBrl(unitPrice),
+      formatBrl(totalPrice)
+    ];
+  });
 
   if (tableRows.length === 0) {
-    tableRows.push([1, 'SERVIÇO', 'Execução de serviços técnicos', '1 UN', formatBrl(data.total), formatBrl(data.total)]);
+    const defaultDesc = isQuote
+      ? ((data as Quote).description || 'Execução de serviços técnicos especializados')
+      : ((data as WorkOrder).service_description || 'Execução de serviços técnicos especializados');
+    tableRows.push([1, 'SERVIÇO', defaultDesc, '1 UN', formatBrl(data.total), formatBrl(data.total)]);
   }
 
   autoTable(doc, {

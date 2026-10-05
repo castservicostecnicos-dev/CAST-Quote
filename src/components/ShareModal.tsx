@@ -56,6 +56,34 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [instanceName, setInstanceName] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
   const [configSavedNotice, setConfigSavedNotice] = useState(false);
+  const [fullData, setFullData] = useState<Quote | WorkOrder | null>(data);
+
+  // Proactively fetch full document (items & photos) if not present in the passed object
+  useEffect(() => {
+    setFullData(data);
+    let isCancelled = false;
+
+    if (isOpen && data?.id) {
+      const hasItems = Array.isArray(data.items) && data.items.length > 0;
+      if (!hasItems) {
+        const fetchPromise = type === 'ORÇAMENTO'
+          ? api.getQuote(data.id)
+          : api.getWorkOrder(data.id);
+
+        fetchPromise
+          .then((fullDoc) => {
+            if (!isCancelled && fullDoc) {
+              setFullData(fullDoc);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, data, type]);
 
   // Load company's saved WhatsApp settings on open
   useEffect(() => {
@@ -81,11 +109,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     }
   }, [isOpen, data, company]);
 
-  if (!isOpen || !data) return null;
+  const activeDoc = fullData || data;
+
+  if (!isOpen || !activeDoc) return null;
 
   const isQuote = type === 'ORÇAMENTO';
-  const docNumber = isQuote ? (data as Quote).quote_number : (data as WorkOrder).order_number;
-  const compName = company?.name || (data as any).company?.name || 'CAST Quote';
+  const docNumber = isQuote ? (activeDoc as Quote).quote_number : (activeDoc as WorkOrder).order_number;
+  const compName = company?.name || (activeDoc as any).company?.name || 'CAST Quote';
 
   const formatCurrency = (val: number) =>
     (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -93,7 +123,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   // Generate the formatted summary for WhatsApp
   const whatsappMessage = buildWhatsAppSummary({
     type,
-    data,
+    data: activeDoc,
     company,
     customNotes
   });
